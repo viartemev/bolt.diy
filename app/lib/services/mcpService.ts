@@ -17,7 +17,7 @@ export const stdioServerConfigSchema = z
     command: z.string().min(1, 'Command cannot be empty'),
     args: z.array(z.string()).optional(),
     cwd: z.string().optional(),
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -28,8 +28,8 @@ export type STDIOServerConfig = z.infer<typeof stdioServerConfigSchema>;
 export const sseServerConfigSchema = z
   .object({
     type: z.enum(['sse']).optional(),
-    url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string()).optional(),
+    url: z.string().url({ message: 'URL must be a valid URL format' }),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -40,8 +40,8 @@ export type SSEServerConfig = z.infer<typeof sseServerConfigSchema>;
 export const streamableHTTPServerConfigSchema = z
   .object({
     type: z.enum(['streamable-http']).optional(),
-    url: z.string().url('URL must be a valid URL format'),
-    headers: z.record(z.string()).optional(),
+    url: z.string().url({ message: 'URL must be a valid URL format' }),
+    headers: z.record(z.string(), z.string()).optional(),
   })
   .transform((data) => ({
     ...data,
@@ -142,7 +142,7 @@ export class MCPService {
       return mcpServerConfigSchema.parse(config);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        const errorMessages = validationError.errors.map((err) => `${err.path.join('.')}: ${err.message}`).join('; ');
+        const errorMessages = validationError.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join('; ');
         throw new Error(`Invalid configuration for server "${serverName}": ${errorMessages}`);
       }
 
