@@ -1,6 +1,5 @@
 import { Buffer } from 'node:buffer';
 import type { PathWatcherEvent, WebContainer } from '@webcontainer/api';
-import { getEncoding } from 'istextorbinary';
 import { map, type MapStore } from 'nanostores';
 import {
   addLockedFile,
@@ -75,6 +74,17 @@ export class FilesStore {
 
   constructor(webcontainerPromise: Promise<WebContainer>) {
     this.#webcontainer = webcontainerPromise;
+
+    // Pre-load istextorbinary module in browser context to avoid async issues later
+    if (typeof window !== 'undefined') {
+      import('istextorbinary')
+        .then((module) => {
+          istextorbinaryModule = module;
+        })
+        .catch((error) => {
+          logger.error('Failed to pre-load istextorbinary module', error);
+        });
+    }
 
     // Load deleted paths from localStorage if available
     try {
@@ -731,13 +741,41 @@ export class FilesStore {
            * The reason we do this is because we don't want to display binary files
            * in the editor nor allow to edit them.
            */
-          const isBinary = isBinaryFile(buffer);
-
-          if (!isBinary) {
+          /*
+           * Handle async binary check - this will only run in browser context
+           * If module is already loaded, use it synchronously; otherwise wait for it
+           */
+          if (buffer === undefined) {
+            // No buffer data, treat as text file
             content = this.#decodeFileContent(buffer);
-          }
+            this.files.setKey(sanitizedPath, { type: 'file', content, isBinary: false });
+          } else if (istextorbinaryModule) {
+            const isBinary =
+              istextorbinaryModule.getEncoding(convertToBuffer(buffer), { chunkLength: 100 }) === 'binary';
 
-          this.files.setKey(sanitizedPath, { type: 'file', content, isBinary });
+            if (!isBinary) {
+              content = this.#decodeFileContent(buffer);
+            }
+
+            this.files.setKey(sanitizedPath, { type: 'file', content, isBinary });
+          } else {
+            // Module not loaded yet, check asynchronously
+            isBinaryFile(buffer)
+              .then((isBinary) => {
+                let fileContent = '';
+
+                if (!isBinary) {
+                  fileContent = this.#decodeFileContent(buffer);
+                }
+
+                this.files.setKey(sanitizedPath, { type: 'file', content: fileContent, isBinary });
+              })
+              .catch(() => {
+                // Fallback: assume it's text if check fails
+                content = this.#decodeFileContent(buffer);
+                this.files.setKey(sanitizedPath, { type: 'file', content, isBinary: false });
+              });
+          }
 
           break;
         }
@@ -932,12 +970,25 @@ export class FilesStore {
   }
 }
 
-function isBinaryFile(buffer: Uint8Array | undefined) {
+// Cache the istextorbinary module to avoid re-importing on every call
+let istextorbinaryModule: {
+  getEncoding: (buffer: Buffer | null, opts?: { chunkLength?: number }) => 'utf8' | 'binary' | null;
+} | null = null;
+
+async function isBinaryFile(buffer: Uint8Array | undefined) {
   if (buffer === undefined) {
     return false;
   }
 
-  return getEncoding(convertToBuffer(buffer), { chunkLength: 100 }) === 'binary';
+  /*
+   * Dynamically import istextorbinary to avoid SSR issues with path-browserify
+   * Cache the module after first import
+   */
+  if (!istextorbinaryModule) {
+    istextorbinaryModule = await import('istextorbinary');
+  }
+
+  return istextorbinaryModule.getEncoding(convertToBuffer(buffer), { chunkLength: 100 }) === 'binary';
 }
 
 /**
