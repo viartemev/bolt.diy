@@ -1,7 +1,7 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { motion, type Variants } from 'framer-motion';
 import React, { memo, type ReactNode, useState, useEffect } from 'react';
-import { FixedSizeList } from 'react-window';
+import { List } from 'react-window';
 import { Button } from './Button';
 import { Checkbox } from './Checkbox';
 import { IconButton } from './IconButton';
@@ -340,11 +340,18 @@ export function SelectionDialog({
   );
 
   // Render each item in the virtualized list
-  const ItemRenderer = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+  const ItemRenderer = ({
+    index,
+    style,
+    ariaAttributes,
+  }: {
+    index: number;
+    style: React.CSSProperties;
+    ariaAttributes: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' };
+  }) => {
     const item = items[index];
     return (
       <div
-        key={item.id}
         className={classNames(
           'flex items-start space-x-3 p-2 rounded-md transition-colors',
           selectedItems.includes(item.id)
@@ -356,6 +363,7 @@ export function SelectionDialog({
           width: '100%',
           boxSizing: 'border-box',
         }}
+        {...ariaAttributes}
       >
         <Checkbox
           id={`item-${item.id}`}
@@ -412,15 +420,14 @@ export function SelectionDialog({
               }}
             >
               {items.length > 0 ? (
-                <FixedSizeList
-                  height={listHeight}
-                  width="100%"
-                  itemCount={items.length}
-                  itemSize={60}
+                <List
+                  style={{ height: listHeight, width: '100%' }}
+                  rowCount={items.length}
+                  rowHeight={60}
                   className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-bolt-elements-bg-depth-3"
-                >
-                  {ItemRenderer}
-                </FixedSizeList>
+                  rowComponent={ItemRenderer}
+                  rowProps={{}}
+                />
               ) : (
                 <div className="text-center py-4 text-sm text-bolt-elements-textTertiary">No items to display</div>
               )}
