@@ -1,16 +1,16 @@
+import { useLocation } from '@remix-run/react';
 import type { UIMessage } from 'ai';
 import { Fragment } from 'react';
-import { classNames } from '~/utils/classNames';
-import { AssistantMessage } from './AssistantMessage';
-import { UserMessage } from './UserMessage';
-import { useLocation } from '@remix-run/react';
-import { db, chatId } from '~/lib/persistence/useChatHistory';
-import { forkChat } from '~/lib/persistence/db';
-import { toast } from 'react-toastify';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
-import type { ProviderInfo } from '~/types/model';
+import { toast } from 'react-toastify';
+import { AssistantMessage } from './AssistantMessage';
+import { UserMessage } from './UserMessage';
+import { forkChat } from '~/lib/persistence/db';
+import { db, chatId } from '~/lib/persistence/useChatHistory';
 import type { ChatMessageMetadata } from '~/types/chat';
+import type { ProviderInfo } from '~/types/model';
+import { classNames } from '~/utils/classNames';
 
 interface MessagesProps {
   id?: string;
@@ -73,6 +73,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
               const sanitizedContent = stripBoltArtifacts(rawContent);
 
               const fallbackText = containsArtifacts ? 'Generated files have been applied to the editor.' : '';
+
               const content =
                 messageMetadata?.displayText ?? (sanitizedContent.length > 0 ? sanitizedContent : fallbackText);
 

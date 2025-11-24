@@ -1,10 +1,8 @@
 import { useLoaderData, useNavigate, useSearchParams } from '@remix-run/react';
-import { useState, useEffect, useCallback } from 'react';
-import { atom } from 'nanostores';
 import { generateId, type JSONValue, type UIMessage } from 'ai';
+import { atom } from 'nanostores';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { workbenchStore } from '~/lib/stores/workbench';
-import { logStore } from '~/lib/stores/logs'; // Import logStore
 import {
   getMessages,
   getNextId,
@@ -17,8 +15,10 @@ import {
   setSnapshot,
   type IChatMetadata,
 } from './db';
-import type { FileMap } from '~/lib/stores/files';
 import type { Snapshot } from './types';
+import type { FileMap } from '~/lib/stores/files';
+import { logStore } from '~/lib/stores/logs'; // Import logStore
+import { workbenchStore } from '~/lib/stores/workbench';
 import { webcontainer } from '~/lib/webcontainer';
 import { detectProjectCommands, createCommandActionsString } from '~/utils/projectCommands';
 
@@ -74,10 +74,13 @@ export function useChatHistory() {
              */
             const validSnapshot = snapshot || { chatIndex: '', files: {} }; // Ensure snapshot is not undefined
             const rewindId = searchParams.get('rewindTo');
+
             let startingIdx = -1;
+
             const endingIdx = rewindId
               ? storedMessages.messages.findIndex((m) => m.id === rewindId) + 1
               : storedMessages.messages.length;
+
             const snapshotIndex = storedMessages.messages.findIndex((m) => m.id === validSnapshot.chatIndex);
 
             if (snapshotIndex >= 0 && snapshotIndex < endingIdx) {
@@ -110,6 +113,7 @@ export function useChatHistory() {
                   };
                 })
                 .filter((x): x is { content: string; path: string } => !!x); // Type assertion
+
               const projectCommands = await detectProjectCommands(files);
 
               // Call the modified function to get only the command actions string
@@ -281,10 +285,12 @@ ${value.content}
       }
 
       let chatSummary: string | undefined = undefined;
+
       const lastMessage = messages[messages.length - 1];
 
       if (lastMessage.role === 'assistant') {
         const annotations = ((lastMessage as any)?.annotations as JSONValue[]) || [];
+
         const filteredAnnotations = (annotations.filter(
           (annotation: JSONValue) =>
             annotation && typeof annotation === 'object' && Object.keys(annotation).includes('type'),
@@ -369,6 +375,7 @@ ${value.content}
       }
 
       const chat = await getMessages(db, id);
+
       const chatData = {
         messages: chat.messages,
         description: chat.description,

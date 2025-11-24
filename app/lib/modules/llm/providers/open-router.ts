@@ -1,8 +1,8 @@
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import type { LanguageModel } from 'ai';
 import { BaseProvider } from '~/lib/modules/llm/base-provider';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { IProviderSetting } from '~/types/model';
-import type { LanguageModel } from 'ai';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
 interface OpenRouterModel {
   name: string;
@@ -107,6 +107,7 @@ export default class OpenRouterProvider extends BaseProvider {
     const openRouter = createOpenRouter({
       apiKey,
     });
+
     const instance = openRouter.chat(model) as LanguageModel;
 
     return instance;

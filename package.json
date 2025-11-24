@@ -158,7 +158,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@blitz/eslint-plugin": "0.1.0",
+    "@blitz/eslint-plugin": "0.1.4",
     "@cloudflare/workers-types": "^4.20251011.0",
     "@electron/notarize": "^2.5.0",
     "@iconify-json/ph": "^1.2.1",
@@ -193,7 +193,7 @@
     "rimraf": "^4.4.1",
     "sass-embedded": "^1.81.0",
     "stream-browserify": "^3.0.0",
-    "typescript": "^5.7.2",
+    "typescript": "^5.9.3",
     "unified": "^11.0.5",
     "unocss": "^0.61.9",
     "vite": "^5.4.21",
@@ -204,7 +204,7 @@
     "wrangler": "^4.44.0"
   },
   "resolutions": {
-    "@typescript-eslint/utils": "^8.0.0-alpha.30"
+    "@typescript-eslint/utils": "^8.47.0"
   },
   "packageManager": "pnpm@10.0.0"
 }

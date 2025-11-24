@@ -1,7 +1,7 @@
 import ignore from 'ignore';
+import { STARTER_TEMPLATES } from './constants';
 import type { ProviderInfo } from '~/types/model';
 import type { Template } from '~/types/template';
-import { STARTER_TEMPLATES } from './constants';
 
 const starterTemplateSelectionPrompt = (templates: Template[]) => `
 You are an experienced developer who helps people choose the best starter template for their projects.
@@ -113,6 +113,7 @@ const fallbackTemplate = {
 
 export const selectStarterTemplate = async (options: { message: string; model: string; provider: ProviderInfo }) => {
   const { message, model, provider } = options;
+
   const requestBody = {
     message,
     model,
@@ -128,6 +129,7 @@ export const selectStarterTemplate = async (options: { message: string; model: s
       },
       body: JSON.stringify(requestBody),
     });
+
     const respJson = await response.json().catch(() => undefined);
 
     if (!response.ok) {
@@ -241,7 +243,9 @@ ${file.content}
   .join('\n')}
 </boltArtifact>
 `;
+
   let userMessage = ``;
+
   const templatePromptFile = files.filter((x) => x.path.startsWith('.bolt')).find((x) => x.name == 'prompt');
 
   if (templatePromptFile) {

@@ -1,11 +1,11 @@
 import { generateText, type GenerateTextResult, type CoreMessage } from 'ai';
 import ignore from 'ignore';
-import type { IProviderSetting } from '~/types/model';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
 import { createFilesContext, extractCurrentContext, extractPropertiesFromMessage, simplifyBoltActions } from './utils';
-import { createScopedLogger } from '~/utils/logger';
 import { LLMManager } from '~/lib/modules/llm/manager';
+import type { IProviderSetting } from '~/types/model';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROVIDER_LIST } from '~/utils/constants';
+import { createScopedLogger } from '~/utils/logger';
 
 // Common patterns to ignore, similar to .gitignore
 
@@ -24,8 +24,10 @@ export async function selectContext(props: {
   onFinish?: (resp: GenerateTextResult<any, any>) => void;
 }) {
   const { messages, env: serverEnv, apiKeys, files, providerSettings, summary, onFinish } = props;
+
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
+
   const processedMessages = messages.map((message) => {
     if (message.role === 'user') {
       const { model, provider, content } = extractPropertiesFromMessage(message);
@@ -58,6 +60,7 @@ export async function selectContext(props: {
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
   const staticModels = LLMManager.getInstance().getStaticModelListFromProvider(provider);
+
   let modelDetails = staticModels.find((m) => m.name === currentModel);
 
   if (!modelDetails) {
@@ -94,6 +97,7 @@ export async function selectContext(props: {
   });
 
   let context = '';
+
   const currrentFiles: string[] = [];
   const contextFiles: FileMap = {};
 
