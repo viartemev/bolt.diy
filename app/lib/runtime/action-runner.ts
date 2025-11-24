@@ -436,6 +436,7 @@ export class ActionRunner {
     // Switch to preview if available after successful build
     const previews = workbenchStore.previews.get();
     const hasActivePreview = previews.some((preview) => preview.ready);
+
     if (hasActivePreview) {
       workbenchStore.currentView.set('preview');
     }

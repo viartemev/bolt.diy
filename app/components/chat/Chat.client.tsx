@@ -123,10 +123,7 @@ function normalizeMessagesForDisplay(messages: UIMessage[], parsedMessages: Reco
     assistantMessage.metadata = { ...metadata, hidden: true };
     normalized.push(assistantMessage);
 
-    const summaryText =
-      metadata.displayText ||
-      sanitizedText ||
-      'Generated files have been applied to the editor.';
+    const summaryText = metadata.displayText || sanitizedText || 'Generated files have been applied to the editor.';
 
     normalized.push({
       id: `${message.id}-summary`,

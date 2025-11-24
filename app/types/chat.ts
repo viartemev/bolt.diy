@@ -12,5 +12,3 @@ export interface ChatMessageMetadata {
    */
   hidden?: boolean;
 }
-
-

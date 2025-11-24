@@ -1,10 +1,5 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import {
-  createUIMessageStream,
-  createUIMessageStreamResponse,
-  type UIMessage,
-  convertToCoreMessages,
-} from 'ai';
+import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage, convertToCoreMessages } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';

@@ -119,6 +119,7 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     provider,
     system: starterTemplateSelectionPrompt(templates),
   };
+
   try {
     const response = await fetch('/api/llmcall', {
       method: 'POST',
@@ -148,6 +149,7 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     }
 
     console.log('No template selected, using blank template');
+
     return fallbackTemplate;
   } catch (error) {
     console.error('Starter template selection failed', error);

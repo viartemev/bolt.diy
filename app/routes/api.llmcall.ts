@@ -111,8 +111,10 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         providerSettings,
       });
 
-      // Using the helper to build the response ensures the stream chunks
-      // are serialized as text/buffers instead of raw objects (fixes Node error).
+      /*
+       * Using the helper to build the response ensures the stream chunks
+       * are serialized as text/buffers instead of raw objects (fixes Node error).
+       */
       return result.toTextStreamResponse();
     } catch (error: unknown) {
       console.log(error);

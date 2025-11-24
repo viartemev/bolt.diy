@@ -278,30 +278,31 @@ export const Menu = () => {
     }
   }, [open, selectionMode]);
 
+  // Close menu when clicking outside
   useEffect(() => {
-    const enterThreshold = 20;
-    const exitThreshold = 20;
-
-    function onMouseMove(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent) {
       if (isSettingsOpen) {
         return;
       }
 
-      if (event.pageX < enterThreshold) {
-        setOpen(true);
-      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        // Check if click is not on the user icon button
+        const target = event.target as HTMLElement;
 
-      if (menuRef.current && event.clientX > menuRef.current.getBoundingClientRect().right + exitThreshold) {
-        setOpen(false);
+        if (target && !target.closest('.user-menu-button')) {
+          setOpen(false);
+        }
       }
     }
 
-    window.addEventListener('mousemove', onMouseMove);
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
 
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isSettingsOpen]);
+  }, [open, isSettingsOpen]);
 
   const handleDuplicate = async (id: string) => {
     await duplicateCurrentChat(id);
@@ -322,8 +323,33 @@ export const Menu = () => {
     setDialogContent(content);
   }, []);
 
+  const toggleMenu = useCallback(() => {
+    setOpen((prev) => !prev);
+  }, []);
+
   return (
     <>
+      {/* User icon button - fixed in bottom left corner */}
+      <button
+        onClick={toggleMenu}
+        className={classNames(
+          'user-menu-button fixed bottom-4 left-4 z-max',
+          'w-12 h-12 rounded-full',
+          'bg-white dark:bg-gray-800',
+          'border border-gray-200 dark:border-gray-700',
+          'shadow-lg hover:shadow-xl',
+          'flex items-center justify-center',
+          'transition-all duration-200',
+          'hover:scale-105 active:scale-95',
+          'text-gray-600 dark:text-gray-400',
+          open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 pointer-events-auto',
+        )}
+        aria-label="Toggle menu"
+        aria-pressed={open}
+      >
+        <div className="i-ph:list-bold text-2xl" aria-hidden="true" />
+      </button>
+
       <motion.div
         ref={menuRef}
         initial="closed"
