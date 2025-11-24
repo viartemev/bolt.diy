@@ -1,25 +1,23 @@
+import { FileSystemIconLoader } from '@iconify/utils/lib/loader/node-loaders';
 import { globSync } from 'fast-glob';
-import fs from 'node:fs/promises';
-import { basename } from 'node:path';
-import { defineConfig, presetIcons, presetUno, transformerDirectives } from 'unocss';
+import path from 'node:path';
+import {
+  defineConfig,
+  presetIcons,
+  presetUno,
+  transformerDirectives,
+  transformerVariantGroup,
+} from 'unocss';
 
 const useLocalIconify = process.env.NODE_ENV !== 'production';
+const iconCollectionName = 'bolt';
+const iconsDirectory = path.resolve(process.cwd(), 'icons');
 
-const iconPaths = globSync('./icons/*.svg');
+const iconSafelist = globSync('*.svg', { cwd: iconsDirectory }).map((fileName) => {
+  const [iconName] = fileName.split('.');
 
-const collectionName = 'bolt';
-
-const customIconCollection = iconPaths.reduce(
-  (acc, iconPath) => {
-    const [iconName] = basename(iconPath).split('.');
-
-    acc[collectionName] ??= {};
-    acc[collectionName][iconName] = async () => fs.readFile(iconPath, 'utf8');
-
-    return acc;
-  },
-  {} as Record<string, Record<string, () => Promise<string>>>,
-);
+  return `i-${iconCollectionName}:${iconName}`;
+});
 
 const iconifyCollections = useLocalIconify
   ? {
@@ -108,7 +106,17 @@ const COLOR_PRIMITIVES = {
 };
 
 export default defineConfig({
-  safelist: [...Object.keys(customIconCollection[collectionName] || {}).map((x) => `i-bolt:${x}`)],
+  content: {
+    pipeline: {
+      include: [
+        './app/**/*.{ts,tsx,js,jsx,mdx}',
+        './electron/**/*.{ts,tsx,js,jsx}',
+        './uno.config.ts',
+      ],
+      exclude: ['node_modules', '.git', '.wrangler', './build', './dist'],
+    },
+  },
+  safelist: iconSafelist,
   shortcuts: {
     'bolt-ease-cubic-bezier': 'ease-[cubic-bezier(0.4,0,0.2,1)]',
     'transition-theme': 'transition-[background-color,border-color,color] duration-150 bolt-ease-cubic-bezier',
@@ -239,7 +247,7 @@ export default defineConfig({
       },
     },
   },
-  transformers: [transformerDirectives()],
+  transformers: [transformerVariantGroup(), transformerDirectives()],
   presets: [
     presetUno({
       dark: {
@@ -249,8 +257,11 @@ export default defineConfig({
     }),
     presetIcons({
       warn: true,
+      extraProperties: {
+        display: 'inline-block',
+      },
       collections: {
-        ...customIconCollection,
+        [iconCollectionName]: FileSystemIconLoader(iconsDirectory),
         ...iconifyCollections,
       },
       unit: 'em',
