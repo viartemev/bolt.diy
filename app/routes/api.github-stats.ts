@@ -1,9 +1,9 @@
-import { json } from '@remix-run/cloudflare';
+import { json } from '@remix-run/node';
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 import type { GitHubUserResponse, GitHubStats } from '~/types/GitHub';
 
-async function githubStatsLoader({ request, context }: { request: Request; context: any }) {
+async function githubStatsLoader({ request, context: _context }: { request: Request; context: any }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
@@ -13,8 +13,6 @@ async function githubStatsLoader({ request, context }: { request: Request; conte
     const githubToken =
       apiKeys.GITHUB_API_KEY ||
       apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.GITHUB_TOKEN ||
-      context?.cloudflare?.env?.VITE_GITHUB_ACCESS_TOKEN ||
       process.env.GITHUB_TOKEN ||
       process.env.VITE_GITHUB_ACCESS_TOKEN;
 

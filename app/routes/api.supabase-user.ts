@@ -1,18 +1,15 @@
-import { json } from '@remix-run/cloudflare';
+import { json } from '@remix-run/node';
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
-async function supabaseUserLoader({ request, context }: { request: Request; context: any }) {
+async function supabaseUserLoader({ request, context: _context }: { request: Request; context: any }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
     // Try to get Supabase token from various sources
-    const supabaseToken =
-      apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
-      process.env.VITE_SUPABASE_ACCESS_TOKEN;
+    const supabaseToken = apiKeys.VITE_SUPABASE_ACCESS_TOKEN || process.env.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return json({ error: 'Supabase token not found' }, { status: 401 });
@@ -81,7 +78,7 @@ export const loader = withSecurity(supabaseUserLoader, {
   allowedMethods: ['GET'],
 });
 
-async function supabaseUserAction({ request, context }: { request: Request; context: any }) {
+async function supabaseUserAction({ request, context: _context }: { request: Request; context: any }) {
   try {
     const formData = await request.formData();
     const action = formData.get('action');
@@ -91,10 +88,7 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
     const apiKeys = getApiKeysFromCookie(cookieHeader);
 
     // Try to get Supabase token from various sources
-    const supabaseToken =
-      apiKeys.VITE_SUPABASE_ACCESS_TOKEN ||
-      context?.cloudflare?.env?.VITE_SUPABASE_ACCESS_TOKEN ||
-      process.env.VITE_SUPABASE_ACCESS_TOKEN;
+    const supabaseToken = apiKeys.VITE_SUPABASE_ACCESS_TOKEN || process.env.VITE_SUPABASE_ACCESS_TOKEN;
 
     if (!supabaseToken) {
       return json({ error: 'Supabase token not found' }, { status: 401 });

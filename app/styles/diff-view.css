@@ -55,11 +55,11 @@
 }
 
 .diff-line-number {
-  @apply w-12 shrink-0 pl-2 py-0.5 text-left font-mono text-bolt-elements-textTertiary border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1;
+  @apply w-9 shrink-0 pl-2 py-0.5 text-left font-mono text-xs text-bolt-elements-textTertiary border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1;
 }
 
 .diff-line-content {
-  @apply px-4 py-0.5 font-mono whitespace-pre flex-1 group-hover:bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary;
+  @apply px-2 py-0.5 font-mono text-xs whitespace-pre flex-1 group-hover:bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary leading-normal;
 }
 
 /* Cores específicas para adições/remoções */
@@ -69,4 +69,17 @@
 
 .diff-removed {
   @apply bg-red-500/20 border-l-4 border-red-500;
+}
+
+/* Override shiki highlighter font size to match code editor (12px) */
+.diff-panel-content span {
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+/* Ensure code elements from shiki use consistent font size */
+.diff-panel-content pre,
+.diff-panel-content code {
+  font-size: 12px !important;
+  line-height: 1.5 !important;
 }

@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs } from '@remix-run/node';
 import { createUIMessageStream, createUIMessageStreamResponse, type UIMessage, convertToCoreMessages } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { createSummary } from '~/lib/.server/llm/create-summary';
@@ -39,7 +39,7 @@ function parseCookies(cookieHeader: string): Record<string, string> {
   return cookies;
 }
 
-async function chatAction({ context, request }: ActionFunctionArgs) {
+async function chatAction({ context: _context, request }: ActionFunctionArgs) {
   const streamRecovery = new StreamRecoveryManager({
     timeout: 45000,
     maxRetries: 2,
@@ -48,7 +48,9 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     },
   });
 
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme } = await request.json<{
+  const body = await request.json();
+
+  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme } = body as {
     messages: Messages;
     files: any;
     promptId?: string;
@@ -63,7 +65,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         supabaseUrl?: string;
       };
     };
-  }>();
+  };
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -146,7 +148,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
           summary = await createSummary({
             messages: convertToCoreMessages(processedMessages),
-            env: context.cloudflare?.env,
+            env: process.env as unknown as Env,
             apiKeys,
             providerSettings,
             promptId,
@@ -214,7 +216,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           console.log(`Messages count: ${processedMessages.length}`);
           filteredFiles = await selectContext({
             messages: convertToCoreMessages(processedMessages),
-            env: context.cloudflare?.env,
+            env: process.env as unknown as Env,
             apiKeys,
             files,
             providerSettings,
@@ -374,7 +376,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
             const result = await streamText({
               messages: coreMessages,
-              env: context.cloudflare?.env,
+              env: process.env as unknown as Env,
               options,
               apiKeys,
               files,
@@ -418,7 +420,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         const result = await streamText({
           messages: convertToCoreMessages(processedMessages),
-          env: context.cloudflare?.env,
+          env: process.env as unknown as Env,
           options,
           apiKeys,
           files,

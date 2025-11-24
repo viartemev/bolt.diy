@@ -11,7 +11,6 @@
     "email": "maintainers@bolt.diy"
   },
   "scripts": {
-    "deploy": "npm run build && wrangler pages deploy",
     "build": "remix vite:build",
     "dev": "node pre-start.cjs  && remix vite:dev",
     "dev:clear-cache": "rm -rf node_modules/.vite && echo '✅ Vite cache cleared. Restart your dev server.'",
@@ -19,16 +18,11 @@
     "test:watch": "vitest",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint app",
     "lint:fix": "npm run lint -- --fix && prettier app --write",
-    "start:windows": "wrangler pages dev ./build/client",
-    "start:unix": "bindings=$(./bindings.sh) && wrangler pages dev ./build/client $bindings",
-    "start": "node -e \"const { spawn } = require('child_process'); const isWindows = process.platform === 'win32'; const cmd = isWindows ? 'npm run start:windows' : 'npm run start:unix'; const child = spawn(cmd, { shell: true, stdio: 'inherit' }); child.on('exit', code => process.exit(code));\"",
-    "dockerstart": "bindings=$(./bindings.sh) && wrangler pages dev ./build/client $bindings --ip 0.0.0.0 --port 5173 --no-show-interactive-dev-session",
     "dockerrun": "docker run -it -d --name bolt-ai-live -p 5173:5173 --env-file .env.local bolt-ai",
     "dockerbuild:prod": "docker build -t bolt-ai:production -t bolt-ai:latest --target bolt-ai-production .",
     "dockerbuild": "docker build -t bolt-ai:development -t bolt-ai:latest --target development .",
     "typecheck": "tsc",
-    "typegen": "wrangler types",
-    "preview": "pnpm run build && pnpm run start",
+    "preview": "pnpm run build && remix-serve ./build/server/index.js",
     "prepare": "husky",
     "clean": "node scripts/clean.js",
     "clean:all": "pnpm store prune && rm -rf node_modules && pnpm clean",
@@ -96,8 +90,6 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@remix-run/cloudflare": "^2.17.2",
-    "@remix-run/cloudflare-pages": "^2.17.2",
     "@remix-run/node": "^2.17.2",
     "@remix-run/react": "^2.17.2",
     "@tanstack/react-virtual": "^3.13.0",
@@ -162,7 +154,6 @@
   },
   "devDependencies": {
     "@blitz/eslint-plugin": "0.1.4",
-    "@cloudflare/workers-types": "^4.20251121.0",
     "@electron/notarize": "^2.5.0",
     "@iconify-json/ph": "^1.2.1",
     "@iconify/types": "^2.0.0",
@@ -204,8 +195,7 @@
     "vite-plugin-copy": "^0.1.6",
     "vite-plugin-optimize-css-modules": "^1.2.0",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.0.13",
-    "wrangler": "^4.50.0"
+    "vitest": "^4.0.13"
   },
   "resolutions": {
     "@typescript-eslint/utils": "^8.47.0",

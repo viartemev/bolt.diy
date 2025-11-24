@@ -1,4 +1,4 @@
-import { json } from '@remix-run/cloudflare';
+import { json } from '@remix-run/node';
 import { getApiKeysFromCookie } from '~/lib/api/cookies';
 import { withSecurity } from '~/lib/security';
 
@@ -18,7 +18,7 @@ interface BranchInfo {
   isDefault: boolean;
 }
 
-async function githubBranchesLoader({ request, context }: { request: Request; context: any }) {
+async function githubBranchesLoader({ request, context: _context }: { request: Request; context: any }) {
   try {
     let owner: string;
     let repo: string;
@@ -56,8 +56,6 @@ async function githubBranchesLoader({ request, context }: { request: Request; co
       githubToken =
         apiKeys.GITHUB_API_KEY ||
         apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
-        context?.cloudflare?.env?.GITHUB_TOKEN ||
-        context?.cloudflare?.env?.VITE_GITHUB_ACCESS_TOKEN ||
         process.env.GITHUB_TOKEN ||
         process.env.VITE_GITHUB_ACCESS_TOKEN ||
         '';

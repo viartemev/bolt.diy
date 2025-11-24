@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs } from '@remix-run/cloudflare';
+import { type ActionFunctionArgs } from '@remix-run/node';
 import { generateText } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel } from '~/lib/.server/llm/constants';
 import { streamText } from '~/lib/.server/llm/stream-text';
@@ -64,14 +64,16 @@ function validateTokenLimits(modelDetails: ModelInfo, requestedTokens: number): 
   return { valid: true };
 }
 
-async function llmCallAction({ context, request }: ActionFunctionArgs) {
-  const { system, message, model, provider, streamOutput } = await request.json<{
+async function llmCallAction({ context: _context, request }: ActionFunctionArgs) {
+  const body = await request.json();
+
+  const { system, message, model, provider, streamOutput } = body as {
     system: string;
     message: string;
     model: string;
     provider: ProviderInfo;
     streamOutput?: boolean;
-  }>();
+  };
 
   const { name: providerName } = provider;
 
@@ -106,7 +108,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
             content: `${message}`,
           },
         ],
-        env: context.cloudflare?.env as any,
+        env: process.env as any,
         apiKeys,
         providerSettings,
       });
@@ -150,7 +152,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
     }
   } else {
     try {
-      const models = await getModelList({ apiKeys, providerSettings, serverEnv: context.cloudflare?.env as any });
+      const models = await getModelList({ apiKeys, providerSettings, serverEnv: process.env as any });
       const modelDetails = models.find((m: ModelInfo) => m.name === model);
 
       if (!modelDetails) {
@@ -195,7 +197,7 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         ],
         model: providerInfo.getModelInstance({
           model: modelDetails.name,
-          serverEnv: context.cloudflare?.env as any,
+          serverEnv: process.env as any,
           apiKeys,
           providerSettings,
         }),

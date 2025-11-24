@@ -313,9 +313,9 @@ const processChanges = (beforeCode: string, afterCode: string) => {
 };
 
 const lineNumberStyles =
-  'w-9 shrink-0 pl-2 py-1 text-left font-mono text-bolt-elements-textTertiary border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1';
+  'w-9 shrink-0 pl-2 py-0.5 text-left font-mono text-xs text-bolt-elements-textTertiary border-r border-bolt-elements-borderColor bg-bolt-elements-background-depth-1';
 const lineContentStyles =
-  'px-1 py-1 font-mono whitespace-pre flex-1 group-hover:bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary';
+  'px-2 py-0.5 font-mono text-xs whitespace-pre flex-1 group-hover:bg-bolt-elements-background-depth-2 text-bolt-elements-textPrimary leading-normal';
 
 const diffPanelStyles = 'h-full overflow-auto diff-panel-content';
 
@@ -373,7 +373,7 @@ const NoChangesView = memo(
             <div key={index} className="flex group min-w-fit">
               <div className={lineNumberStyles}>{index + 1}</div>
               <div className={lineContentStyles}>
-                <span className="mr-2"> </span>
+                <span className="mr-2 text-bolt-elements-textTertiary"> </span>
                 <span
                   dangerouslySetInnerHTML={{
                     __html: highlighter

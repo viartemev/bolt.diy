@@ -11,6 +11,8 @@ import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
+import { chatStore } from '~/lib/stores/chat';
+import { menuStore } from '~/lib/stores/menu';
 import { profileStore } from '~/lib/stores/profile';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
@@ -67,10 +69,12 @@ export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory();
   const menuRef = useRef<HTMLDivElement>(null);
   const [list, setList] = useState<ChatHistoryItem[]>([]);
-  const [open, setOpen] = useState(false);
+  const menu = useStore(menuStore);
+  const open = menu.open;
+  const isSettingsOpen = menu.isSettingsOpen;
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = useStore(profileStore);
+  const chat = useStore(chatStore);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
@@ -288,11 +292,11 @@ export const Menu = () => {
       }
 
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        // Check if click is not on the user icon button
+        // Check if click is not on the user icon button or header menu button
         const target = event.target as HTMLElement;
 
-        if (target && !target.closest('.user-menu-button')) {
-          setOpen(false);
+        if (target && !target.closest('.user-menu-button') && !target.closest('.header-menu-button')) {
+          menuStore.setKey('open', false);
         }
       }
     }
@@ -312,12 +316,12 @@ export const Menu = () => {
   };
 
   const handleSettingsClick = () => {
-    setIsSettingsOpen(true);
-    setOpen(false);
+    menuStore.setKey('isSettingsOpen', true);
+    menuStore.setKey('open', false);
   };
 
   const handleSettingsClose = () => {
-    setIsSettingsOpen(false);
+    menuStore.setKey('isSettingsOpen', false);
   };
 
   const setDialogContentWithLogging = useCallback((content: DialogContent) => {
@@ -326,31 +330,33 @@ export const Menu = () => {
   }, []);
 
   const toggleMenu = useCallback(() => {
-    setOpen((prev) => !prev);
-  }, []);
+    menuStore.setKey('open', !open);
+  }, [open]);
 
   return (
     <>
-      {/* User icon button - fixed in bottom left corner */}
-      <button
-        onClick={toggleMenu}
-        className={classNames(
-          'user-menu-button fixed bottom-4 left-4 z-max',
-          'w-12 h-12 rounded-full',
-          'bg-white dark:bg-gray-800',
-          'border border-gray-200 dark:border-gray-700',
-          'shadow-lg hover:shadow-xl',
-          'flex items-center justify-center',
-          'transition-all duration-200',
-          'hover:scale-105 active:scale-95',
-          'text-gray-600 dark:text-gray-400',
-          open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 pointer-events-auto',
-        )}
-        aria-label="Toggle menu"
-        aria-pressed={open}
-      >
-        <div className="i-ph:list-bold text-2xl" aria-hidden="true" />
-      </button>
+      {/* User icon button - fixed in bottom left corner - only show when chat not started */}
+      {!chat.started && (
+        <button
+          onClick={toggleMenu}
+          className={classNames(
+            'user-menu-button fixed bottom-4 left-4 z-max',
+            'w-12 h-12 rounded-full',
+            'bg-white dark:bg-gray-800',
+            'border border-gray-200 dark:border-gray-700',
+            'shadow-lg hover:shadow-xl',
+            'flex items-center justify-center',
+            'transition-all duration-200',
+            'hover:scale-105 active:scale-95',
+            'text-gray-600 dark:text-gray-400',
+            open ? 'opacity-0 pointer-events-none scale-90' : 'opacity-100 pointer-events-auto',
+          )}
+          aria-label="Toggle menu"
+          aria-pressed={open}
+        >
+          <div className="i-ph:list-bold text-2xl" aria-hidden="true" />
+        </button>
+      )}
 
       <motion.div
         ref={menuRef}

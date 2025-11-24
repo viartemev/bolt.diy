@@ -1,4 +1,4 @@
-import { json } from '@remix-run/cloudflare';
+import { json } from '@remix-run/node';
 import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
@@ -41,17 +41,13 @@ function getProviderInfo(llmManager: LLMManager) {
 export async function loader({
   request,
   params,
-  context,
+  context: _context,
 }: {
   request: Request;
   params: { provider?: string };
-  context: {
-    cloudflare?: {
-      env: Record<string, string>;
-    };
-  };
+  context: {};
 }): Promise<Response> {
-  const llmManager = LLMManager.getInstance(context.cloudflare?.env);
+  const llmManager = LLMManager.getInstance(process.env as Record<string, string>);
 
   // Get client side maintained API keys and provider settings from cookies
   const cookieHeader = request.headers.get('Cookie');
@@ -70,7 +66,7 @@ export async function loader({
       modelList = await llmManager.getModelListFromProvider(provider, {
         apiKeys,
         providerSettings,
-        serverEnv: context.cloudflare?.env,
+        serverEnv: process.env as unknown as Record<string, string>,
       });
     }
   } else {
@@ -78,7 +74,7 @@ export async function loader({
     modelList = await llmManager.updateModelList({
       apiKeys,
       providerSettings,
-      serverEnv: context.cloudflare?.env,
+      serverEnv: process.env as unknown as Record<string, string>,
     });
   }
 

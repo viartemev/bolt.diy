@@ -1,4 +1,4 @@
-import { cloudflareDevProxyVitePlugin as remixCloudflareDevProxy, vitePlugin as remixVitePlugin } from '@remix-run/dev';
+import { vitePlugin as remixVitePlugin } from '@remix-run/dev';
 import UnoCSS from 'unocss/vite';
 import { defineConfig, type ViteDevServer } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
@@ -15,6 +15,37 @@ export default defineConfig((config) => {
   return {
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+    },
+    // Suppress warnings about Node.js modules being externalized (this is expected behavior)
+    logLevel: 'warn',
+    customLogger: {
+      ...console,
+      warn: (msg: string, options?: any) => {
+        // Suppress specific warnings about Node.js modules being externalized
+        if (typeof msg === 'string' && msg.includes('has been externalized for browser compatibility')) {
+          return;
+        }
+        console.warn(msg, options);
+      },
+    } as any,
+    // Exclude server-only dependencies from client optimization
+    optimizeDeps: {
+      exclude: ['undici', '@remix-run/node'],
+      esbuildOptions: {
+        plugins: [
+          {
+            name: 'fix-util-types-esbuild',
+            setup(build) {
+              build.onResolve({ filter: /^node:util\/types$/ }, () => {
+                return { path: 'node:util', external: false };
+              });
+              build.onResolve({ filter: /util\/types$/ }, () => {
+                return { path: 'node:util', external: false };
+              });
+            },
+          },
+        ],
+      },
     },
     build: {
       target: 'esnext',
@@ -51,7 +82,41 @@ export default defineConfig((config) => {
           return null;
         },
       },
-      config.mode !== 'test' && remixCloudflareDevProxy(),
+      {
+        name: 'fix-util-types',
+        enforce: 'pre', // Run before other plugins
+        resolveId(id, importer) {
+          // Handle node:util/types and util/types imports
+          if (id === 'node:util/types' || id === 'util/types' || id.endsWith('/util/types')) {
+            return { id: 'node:util', external: false };
+          }
+          return null;
+        },
+        load(id) {
+          // Handle direct file access to util/types
+          if (id.includes('util/types') && !id.includes('node_modules/util')) {
+            return "export * from 'node:util';";
+          }
+          return null;
+        },
+        transform(code, id) {
+          // Replace require('node:util/types') with require('node:util')
+          if (code.includes("require('node:util/types')") || code.includes('require("node:util/types")')) {
+            return {
+              code: code.replace(/require\(['"]node:util\/types['"]\)/g, "require('node:util')"),
+              map: null,
+            };
+          }
+          // Also handle import statements
+          if (code.includes("from 'node:util/types'") || code.includes('from "node:util/types"')) {
+            return {
+              code: code.replace(/from ['"]node:util\/types['"]/g, "from 'node:util'"),
+              map: null,
+            };
+          }
+          return null;
+        },
+      },
       remixVitePlugin({
         future: {
           v3_fetcherPersist: true,
