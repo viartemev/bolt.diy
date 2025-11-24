@@ -110,8 +110,8 @@ async function enhancerAction({ context, request }: ActionFunctionArgs) {
       }
     })();
 
-    // Return the text stream directly since it's already text data
-    return new Response(result.textStream, {
+    // Use helper to ensure chunks are serialized correctly for SSE streaming
+    return result.toTextStreamResponse({
       status: 200,
       headers: {
         'Content-Type': 'text/event-stream',

@@ -6,6 +6,7 @@ import { createScopedLogger } from '~/utils/logger';
 import { unreachable } from '~/utils/unreachable';
 import type { ActionCallbackData } from './message-parser';
 import type { BoltShell } from '~/utils/shell';
+import { workbenchStore } from '~/lib/stores/workbench';
 
 const logger = createScopedLogger('ActionRunner');
 
@@ -431,6 +432,13 @@ export class ActionRunner {
       deployStatus: 'running',
       source: 'netlify',
     });
+
+    // Switch to preview if available after successful build
+    const previews = workbenchStore.previews.get();
+    const hasActivePreview = previews.some((preview) => preview.ready);
+    if (hasActivePreview) {
+      workbenchStore.currentView.set('preview');
+    }
 
     // Check for common build directories
     const commonBuildDirs = ['dist', 'build', 'out', 'output', '.next', 'public'];

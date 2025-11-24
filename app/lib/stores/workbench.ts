@@ -598,6 +598,29 @@ export class WorkbenchStore {
     } else {
       await artifact.runner.runAction(data);
     }
+
+    // Check if all actions are complete and switch to preview if available
+    // This check happens after any action completes (file, shell, build, etc.)
+    if (!isStreaming) {
+      const allActions = artifact.runner.actions.get();
+      const actionsList = Object.values(allActions);
+      // Check if all actions are complete (excluding start actions that can run indefinitely)
+      const allActionsComplete = actionsList.length > 0 && actionsList.every((action) => {
+        if (action.type === 'start') {
+          // Start actions can be running indefinitely, so we don't wait for them
+          return action.status === 'complete' || action.status === 'failed' || action.status === 'running';
+        }
+        return action.status === 'complete' || action.status === 'failed';
+      });
+      
+      if (allActionsComplete) {
+        const previews = this.previews.get();
+        const hasActivePreview = previews.some((preview) => preview.ready);
+        if (hasActivePreview) {
+          this.currentView.set('preview');
+        }
+      }
+    }
   }
 
   actionStreamSampler = createSampler(async (data: ActionCallbackData, isStreaming: boolean = false) => {

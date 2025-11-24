@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import { basename } from 'node:path';
 import { defineConfig, presetIcons, presetUno, transformerDirectives } from 'unocss';
 
+const useLocalIconify = process.env.NODE_ENV !== 'production';
+
 const iconPaths = globSync('./icons/*.svg');
 
 const collectionName = 'bolt';
@@ -18,6 +20,14 @@ const customIconCollection = iconPaths.reduce(
   },
   {} as Record<string, Record<string, () => Promise<string>>>,
 );
+
+const iconifyCollections = useLocalIconify
+  ? {
+      ph: () => import('@iconify-json/ph/icons.json').then((mod) => mod.default),
+      'svg-spinners': () =>
+        import('@iconify-json/svg-spinners/icons.json').then((mod) => mod.default),
+    }
+  : {};
 
 const BASE_COLORS = {
   white: '#FFFFFF',
@@ -241,6 +251,7 @@ export default defineConfig({
       warn: true,
       collections: {
         ...customIconCollection,
+        ...iconifyCollections,
       },
       unit: 'em',
     }),

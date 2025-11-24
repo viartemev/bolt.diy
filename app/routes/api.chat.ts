@@ -1,5 +1,10 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createUIMessageStream, type UIMessage, convertToCoreMessages } from 'ai';
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessage,
+  convertToCoreMessages,
+} from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
@@ -489,14 +494,15 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       originalMessages: messages as unknown as UIMessage[],
     });
 
-    return new Response(uiMessageStream, {
-      status: 200,
+    return createUIMessageStreamResponse({
+      stream: uiMessageStream,
       headers: {
         'Content-Type': 'text/event-stream; charset=utf-8',
         Connection: 'keep-alive',
         'Cache-Control': 'no-cache',
         'Text-Encoding': 'chunked',
       },
+      status: 200,
     });
   } catch (error: any) {
     logger.error(error);

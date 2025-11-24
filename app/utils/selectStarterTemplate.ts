@@ -65,8 +65,12 @@ MOST IMPORTANT: YOU DONT HAVE TIME TO THINK JUST START RESPONDING BASED ON HUNCH
 
 const templates: Template[] = STARTER_TEMPLATES.filter((t) => !t.name.includes('shadcn'));
 
-const parseSelectedTemplate = (llmOutput: string): { template: string; title: string } | null => {
+const parseSelectedTemplate = (llmOutput?: string): { template: string; title: string } | null => {
   try {
+    if (!llmOutput || typeof llmOutput !== 'string') {
+      return null;
+    }
+
     // Extract content between <templateName> tags
     const templateNameMatch = llmOutput.match(/<templateName>(.*?)<\/templateName>/);
     const titleMatch = llmOutput.match(/<title>(.*?)<\/title>/);
@@ -82,6 +86,31 @@ const parseSelectedTemplate = (llmOutput: string): { template: string; title: st
   }
 };
 
+const extractResponseText = (responseJson: any): string | undefined => {
+  if (typeof responseJson?.text === 'string' && responseJson.text.trim().length > 0) {
+    return responseJson.text;
+  }
+
+  if (Array.isArray(responseJson?.content)) {
+    const textParts = responseJson.content
+      .filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part: any) => part.text)
+      .join('')
+      .trim();
+
+    if (textParts.length > 0) {
+      return textParts;
+    }
+  }
+
+  return undefined;
+};
+
+const fallbackTemplate = {
+  template: 'blank',
+  title: '',
+} as const;
+
 export const selectStarterTemplate = async (options: { message: string; model: string; provider: ProviderInfo }) => {
   const { message, model, provider } = options;
   const requestBody = {
@@ -90,25 +119,39 @@ export const selectStarterTemplate = async (options: { message: string; model: s
     provider,
     system: starterTemplateSelectionPrompt(templates),
   };
-  const response = await fetch('/api/llmcall', {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
-  const respJson: { text: string } = await response.json();
-  console.log(respJson);
+  try {
+    const response = await fetch('/api/llmcall', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+    const respJson = await response.json().catch(() => undefined);
 
-  const { text } = respJson;
-  const selectedTemplate = parseSelectedTemplate(text);
+    if (!response.ok) {
+      console.error('Starter template selection request failed', respJson);
+      return fallbackTemplate;
+    }
 
-  if (selectedTemplate) {
-    return selectedTemplate;
-  } else {
+    const text = extractResponseText(respJson);
+
+    if (!text) {
+      console.warn('Starter template selection response missing text payload', respJson);
+      return fallbackTemplate;
+    }
+
+    const selectedTemplate = parseSelectedTemplate(text);
+
+    if (selectedTemplate) {
+      return selectedTemplate;
+    }
+
     console.log('No template selected, using blank template');
-
-    return {
-      template: 'blank',
-      title: '',
-    };
+    return fallbackTemplate;
+  } catch (error) {
+    console.error('Starter template selection failed', error);
+    return fallbackTemplate;
   }
 };
 

@@ -111,12 +111,9 @@ async function llmCallAction({ context, request }: ActionFunctionArgs) {
         providerSettings,
       });
 
-      return new Response(result.textStream, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-        },
-      });
+      // Using the helper to build the response ensures the stream chunks
+      // are serialized as text/buffers instead of raw objects (fixes Node error).
+      return result.toTextStreamResponse();
     } catch (error: unknown) {
       console.log(error);
 

@@ -10,6 +10,7 @@ import { toast } from 'react-toastify';
 import { forwardRef } from 'react';
 import type { ForwardedRef } from 'react';
 import type { ProviderInfo } from '~/types/model';
+import type { ChatMessageMetadata } from '~/types/chat';
 
 interface MessagesProps {
   id?: string;
@@ -23,6 +24,13 @@ interface MessagesProps {
   provider?: ProviderInfo;
   addToolResult: ({ toolCallId, result }: { toolCallId: string; result: any }) => void;
 }
+
+const stripBoltArtifacts = (text: string) => {
+  const stripTag = (input: string, tagName: string) =>
+    input.replace(new RegExp(`<${tagName}[\\s\\S]*?(?:<\\/${tagName}>|$)`, 'gi'), '');
+
+  return ['boltArtifact', 'boltAction'].reduce((acc, tag) => stripTag(acc, tag), text).trim();
+};
 
 export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
   (props: MessagesProps, ref: ForwardedRef<HTMLDivElement> | undefined) => {
@@ -53,14 +61,24 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
       <div id={id} className={props.className} ref={ref}>
         {messages.length > 0
           ? messages.map((message, index) => {
-              const { role, id: messageId, parts } = message;
+              const { role, id: messageId, parts, metadata } = message;
               const isUserMessage = role === 'user';
               const isFirst = index === 0;
 
               // Extract text content from parts for display
               const textParts = parts?.filter((p: any) => p.type === 'text') || [];
-              const content = textParts.map((p: any) => p.text).join('');
-              const isHidden = false; // UIMessage doesn't have annotations, check parts instead
+              const rawContent = textParts.map((p: any) => p.text).join('');
+              const containsArtifacts = /<boltArtifact|<boltAction/.test(rawContent);
+              const messageMetadata = metadata as ChatMessageMetadata | undefined;
+              const sanitizedContent = stripBoltArtifacts(rawContent);
+
+              const fallbackText = containsArtifacts ? 'Generated files have been applied to the editor.' : '';
+              const content =
+                messageMetadata?.displayText ?? (sanitizedContent.length > 0 ? sanitizedContent : fallbackText);
+
+              const isHidden =
+                messageMetadata?.hidden ??
+                (containsArtifacts && sanitizedContent.length === 0 && !messageMetadata?.displayText);
 
               if (isHidden) {
                 return <Fragment key={index} />;

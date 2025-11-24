@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
-import { HttpChatTransport } from 'ai';
+import { DefaultChatTransport } from 'ai';
 import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -29,6 +29,7 @@ import type { ElementInfo } from '~/components/workbench/Inspector';
 import type { TextUIPart, FileUIPart } from 'ai';
 import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
+import type { ChatMessageMetadata } from '~/types/chat';
 
 const logger = createScopedLogger('Chat');
 
@@ -82,6 +83,62 @@ interface ChatProps {
   description?: string;
 }
 
+const ARTIFACT_PATTERN = /<boltArtifact|<boltAction/;
+
+const stripBoltArtifacts = (text: string) =>
+  text
+    .replace(/<boltArtifact[\s\S]*?<\/boltArtifact>/g, '')
+    .replace(/<boltAction[\s\S]*?<\/boltAction>/g, '')
+    .trim();
+
+function normalizeMessagesForDisplay(messages: UIMessage[], parsedMessages: Record<number, string>) {
+  const normalized: UIMessage[] = [];
+
+  messages.forEach((message, index) => {
+    if (message.role !== 'assistant') {
+      normalized.push(message);
+      return;
+    }
+
+    const textParts = (message.parts?.filter((part: any) => part?.type === 'text') ?? []) as TextUIPart[];
+    const rawText = textParts.map((part) => part.text).join('');
+    const containsArtifacts = ARTIFACT_PATTERN.test(rawText);
+    const sanitizedText = stripBoltArtifacts(rawText);
+
+    const metadata: ChatMessageMetadata = {
+      ...((message.metadata as ChatMessageMetadata) || {}),
+    };
+
+    const assistantMessage = {
+      ...message,
+      metadata,
+      content: parsedMessages[index] || '',
+    } as UIMessage;
+
+    if (!containsArtifacts) {
+      normalized.push(assistantMessage);
+      return;
+    }
+
+    assistantMessage.metadata = { ...metadata, hidden: true };
+    normalized.push(assistantMessage);
+
+    const summaryText =
+      metadata.displayText ||
+      sanitizedText ||
+      'Generated files have been applied to the editor.';
+
+    normalized.push({
+      id: `${message.id}-summary`,
+      role: 'assistant',
+      parts: [{ type: 'text', text: summaryText }] as TextUIPart[],
+      metadata: { displayText: summaryText },
+    } as UIMessage);
+  });
+
+  return normalized;
+}
+
 export const ChatImpl = memo(
   ({ description, initialMessages, storeMessageHistory, importChat, exportChat }: ChatProps) => {
     useShortcuts();
@@ -131,7 +188,7 @@ export const ChatImpl = memo(
       error,
       addToolResult: addToolResultFromHook,
     } = useChat({
-      transport: new (HttpChatTransport as any)({
+      transport: new DefaultChatTransport({
         api: '/api/chat',
         headers: {
           'Content-Type': 'application/json',
@@ -437,6 +494,10 @@ export const ChatImpl = memo(
 
             if (temResp) {
               const { assistantMessage, userMessage } = temResp;
+              const assistantSummary =
+                template === 'blank'
+                  ? 'Started a blank workspace. You can begin coding right away.'
+                  : `Imported the "${title?.trim() ? title : template}" starter template. Open the editor to inspect the generated files.`;
               const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
 
               setMessages([
@@ -449,6 +510,9 @@ export const ChatImpl = memo(
                   id: `2-${new Date().getTime()}`,
                   role: 'assistant',
                   parts: [{ type: 'text', text: assistantMessage }],
+                  metadata: {
+                    displayText: assistantSummary,
+                  } satisfies ChatMessageMetadata,
                 },
                 {
                   id: `3-${new Date().getTime()}`,
@@ -478,13 +542,6 @@ export const ChatImpl = memo(
 
         // If autoSelectTemplate is disabled or template selection failed, proceed with normal message
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
-        setMessages([
-          {
-            id: `${new Date().getTime()}`,
-            role: 'user',
-            parts: createMessageParts(userMessageText, imageDataList),
-          },
-        ]);
 
         const messageParts = createMessageParts(userMessageText, imageDataList);
         const fileParts = messageParts.filter((p): p is FileUIPart => p.type === 'file');
@@ -596,16 +653,7 @@ export const ChatImpl = memo(
         description={description}
         importChat={importChat}
         exportChat={exportChat}
-        messages={messages.map((message, i) => {
-          if (message.role === 'user') {
-            return message;
-          }
-
-          return {
-            ...message,
-            content: parsedMessages[i] || '',
-          };
-        })}
+        messages={normalizeMessagesForDisplay(messages, parsedMessages)}
         enhancePrompt={() => {
           enhancePrompt(
             input,
