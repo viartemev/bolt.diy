@@ -18,6 +18,14 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+      // Only generate sourcemaps in development, use 'hidden' for production if needed for debugging
+      sourcemap: config.mode === 'development' ? true : false,
+      rollupOptions: {
+        output: {
+          // Exclude source content from source maps to avoid resolution errors
+          sourcemapExcludeSources: config.mode === 'production',
+        },
+      },
     },
     plugins: [
       nodePolyfills({

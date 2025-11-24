@@ -337,7 +337,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
   if (chats.length === 0) {
     return (
       <div className="text-center py-8">
-        <div className="i-ph-chart-line-duotone w-12 h-12 mx-auto mb-4 text-bolt-elements-textTertiary opacity-80" />
+        <div className="i-ph:chart-line-duotone w-12 h-12 mx-auto mb-4 text-bolt-elements-textTertiary opacity-80" />
         <h3 className="text-lg font-medium text-bolt-elements-textPrimary mb-2">No Data Available</h3>
         <p className="text-bolt-elements-textSecondary">
           Start creating chats to see your usage statistics and data visualization.
@@ -360,7 +360,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
         <div className={cardClasses}>
           <h3 className="text-lg font-medium text-bolt-elements-textPrimary mb-4">Total Chats</h3>
           <div className={statClasses}>
-            <div className="i-ph-chats-duotone w-8 h-8 text-indigo-500 dark:text-indigo-400" />
+            <div className="i-ph:chats-duotone w-8 h-8 text-indigo-500 dark:text-indigo-400" />
             <span>{chats.length}</span>
           </div>
         </div>
@@ -368,7 +368,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
         <div className={cardClasses}>
           <h3 className="text-lg font-medium text-bolt-elements-textPrimary mb-4">Total Messages</h3>
           <div className={statClasses}>
-            <div className="i-ph-chat-text-duotone w-8 h-8 text-pink-500 dark:text-pink-400" />
+            <div className="i-ph:chat-text-duotone w-8 h-8 text-pink-500 dark:text-pink-400" />
             <span>{Object.values(messagesByRole).reduce((sum, count) => sum + count, 0)}</span>
           </div>
         </div>
@@ -376,7 +376,7 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
         <div className={cardClasses}>
           <h3 className="text-lg font-medium text-bolt-elements-textPrimary mb-4">Avg. Messages/Chat</h3>
           <div className={statClasses}>
-            <div className="i-ph-chart-bar-duotone w-8 h-8 text-green-500 dark:text-green-400" />
+            <div className="i-ph:chart-bar-duotone w-8 h-8 text-green-500 dark:text-green-400" />
             <span>{averageMessagesPerChat.toFixed(1)}</span>
           </div>
         </div>

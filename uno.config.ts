@@ -9,7 +9,6 @@ import {
   transformerVariantGroup,
 } from 'unocss';
 
-const useLocalIconify = process.env.NODE_ENV !== 'production';
 const iconCollectionName = 'bolt';
 const iconsDirectory = path.resolve(process.cwd(), 'icons');
 
@@ -19,13 +18,12 @@ const iconSafelist = globSync('*.svg', { cwd: iconsDirectory }).map((fileName) =
   return `i-${iconCollectionName}:${iconName}`;
 });
 
-const iconifyCollections = useLocalIconify
-  ? {
-      ph: () => import('@iconify-json/ph/icons.json').then((mod) => mod.default),
-      'svg-spinners': () =>
-        import('@iconify-json/svg-spinners/icons.json').then((mod) => mod.default),
-    }
-  : {};
+// Always load iconify collections for both development and production
+const iconifyCollections = {
+  ph: () => import('@iconify-json/ph/icons.json').then((mod) => mod.default),
+  'svg-spinners': () =>
+    import('@iconify-json/svg-spinners/icons.json').then((mod) => mod.default),
+};
 
 const BASE_COLORS = {
   white: '#FFFFFF',
