@@ -1,4 +1,4 @@
-import { convertToCoreMessages, streamText as _streamText, type Message } from 'ai';
+import { streamText as _streamText, type CoreMessage } from 'ai';
 import { MAX_TOKENS, PROVIDER_COMPLETION_LIMITS, isReasoningModel, type FileMap } from './constants';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODIFICATIONS_TAG_NAME, PROVIDER_LIST, WORK_DIR } from '~/utils/constants';
@@ -11,7 +11,7 @@ import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
 import type { DesignScheme } from '~/types/design-scheme';
 
-export type Messages = Message[];
+export type Messages = CoreMessage[];
 
 export interface StreamingOptions extends Omit<Parameters<typeof _streamText>[0], 'model'> {
   supabaseConnection?: {
@@ -51,8 +51,27 @@ function sanitizeText(text: string): string {
   return sanitized.trim();
 }
 
+function sanitizeMessage(message: CoreMessage): CoreMessage {
+  const sanitizedMessage = { ...message };
+
+  const sanitizeContentArray = (contentArray: any[]) =>
+    contentArray.map((part) => (part?.type === 'text' ? { ...part, text: sanitizeText(part.text ?? '') } : part));
+
+  if (Array.isArray(message.content)) {
+    sanitizedMessage.content = sanitizeContentArray(message.content);
+  } else if (typeof message.content === 'string') {
+    sanitizedMessage.content = sanitizeText(message.content);
+  }
+
+  if (Array.isArray((message as any).parts)) {
+    (sanitizedMessage as any).parts = sanitizeContentArray((message as any).parts);
+  }
+
+  return sanitizedMessage;
+}
+
 export async function streamText(props: {
-  messages: Omit<Message, 'id'>[];
+  messages: CoreMessage[];
   env?: Env;
   options?: StreamingOptions;
   apiKeys?: Record<string, string>;
@@ -83,25 +102,23 @@ export async function streamText(props: {
   let currentModel = DEFAULT_MODEL;
   let currentProvider = DEFAULT_PROVIDER.name;
   let processedMessages = messages.map((message) => {
-    const newMessage = { ...message };
+    const sanitizedMessage = sanitizeMessage(message);
 
     if (message.role === 'user') {
       const { model, provider, content } = extractPropertiesFromMessage(message);
       currentModel = model;
       currentProvider = provider;
-      newMessage.content = sanitizeText(content);
-    } else if (message.role == 'assistant') {
-      newMessage.content = sanitizeText(message.content);
+
+      if (Array.isArray(content)) {
+        sanitizedMessage.content = content.map((item: any) =>
+          item?.type === 'text' ? { ...item, text: sanitizeText(item.text ?? '') } : item,
+        );
+      } else {
+        sanitizedMessage.content = sanitizeText(content);
+      }
     }
 
-    // Sanitize all text parts in parts array, if present
-    if (Array.isArray(message.parts)) {
-      newMessage.parts = message.parts.map((part) =>
-        part.type === 'text' ? { ...part, text: sanitizeText(part.text) } : part,
-      );
-    }
-
-    return newMessage;
+    return sanitizedMessage;
   });
 
   const provider = PROVIDER_LIST.find((p) => p.name === currentProvider) || DEFAULT_PROVIDER;
@@ -273,6 +290,12 @@ export async function streamText(props: {
     ),
   );
 
+  const {
+    supabaseConnection: supabaseConnectionOptions,
+    prompt: _prompt,
+    ...coreStreamOptions
+  } = filteredOptions || {};
+
   const streamParams = {
     model: provider.getModelInstance({
       model: modelDetails.name,
@@ -282,12 +305,23 @@ export async function streamText(props: {
     }),
     system: chatMode === 'build' ? systemPrompt : discussPrompt(),
     ...tokenParams,
-    messages: convertToCoreMessages(processedMessages as any),
-    ...filteredOptions,
+    messages: processedMessages,
+    ...coreStreamOptions,
 
     // Set temperature to 1 for reasoning models (required by OpenAI API)
     ...(isReasoning ? { temperature: 1 } : {}),
-  };
+  } as any;
+
+  if ((coreStreamOptions as any)?._internal) {
+    streamParams._internal = (coreStreamOptions as any)._internal;
+  }
+
+  if (supabaseConnectionOptions) {
+    streamParams._internal = {
+      ...(streamParams._internal || {}),
+      supabaseConnection: supabaseConnectionOptions,
+    };
+  }
 
   // DEBUG: Log final streaming parameters
   logger.info(

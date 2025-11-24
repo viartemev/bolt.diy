@@ -22,8 +22,10 @@ export default function McpServerListItem({ toolName, toolSchema }: McpToolProps
     return null;
   }
 
-  const parameters = (toolSchema.parameters as ToolParameters)?.jsonSchema.properties || {};
-  const requiredParams = (toolSchema.parameters as ToolParameters)?.jsonSchema.required || [];
+  const schema = (toolSchema as any)?.inputSchema as ToolParameters | undefined;
+  const jsonSchema = (schema as any)?.jsonSchema ?? schema;
+  const parameters = jsonSchema?.properties || {};
+  const requiredParams = jsonSchema?.required || [];
 
   return (
     <div className="mt-2 ml-4 p-3 rounded-md bg-bolt-elements-background-depth-2 text-xs">
@@ -34,11 +36,11 @@ export default function McpServerListItem({ toolName, toolSchema }: McpToolProps
 
         <p className="text-bolt-elements-textSecondary">{toolSchema.description || 'No description available'}</p>
 
-        {Object.keys(parameters).length > 0 && (
+        {Object.keys(parameters as Record<string, ParameterProperty>).length > 0 && (
           <div className="mt-2.5">
             <h4 className="text-bolt-elements-textSecondary font-semibold mb-1.5">Parameters:</h4>
             <ul className="ml-1 space-y-2">
-              {Object.entries(parameters).map(([paramName, paramDetails]) => (
+              {Object.entries(parameters as Record<string, ParameterProperty>).map(([paramName, paramDetails]) => (
                 <li key={paramName} className="break-words">
                   <div className="flex items-start">
                     <span className="font-medium text-bolt-elements-textPrimary">
@@ -51,10 +53,10 @@ export default function McpServerListItem({ toolName, toolSchema }: McpToolProps
                     <span className="mx-2 text-bolt-elements-textSecondary">•</span>
 
                     <div className="flex-1">
-                      {paramDetails.type && (
+                      {paramDetails?.type && (
                         <span className="text-bolt-elements-textSecondary italic">{paramDetails.type}</span>
                       )}
-                      {paramDetails.description && (
+                      {paramDetails?.description && (
                         <div className="mt-0.5 text-bolt-elements-textSecondary">{paramDetails.description}</div>
                       )}
                     </div>

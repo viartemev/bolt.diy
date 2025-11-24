@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
-import type { Message } from 'ai';
+import type { UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
+import { HttpChatTransport } from 'ai';
 import { useAnimate } from 'framer-motion';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
@@ -25,7 +26,7 @@ import { filesToArtifacts } from '~/utils/fileUtils';
 import { supabaseConnection } from '~/lib/stores/supabase';
 import { defaultDesignScheme, type DesignScheme } from '~/types/design-scheme';
 import type { ElementInfo } from '~/components/workbench/Inspector';
-import type { TextUIPart, FileUIPart, Attachment } from '@ai-sdk/ui-utils';
+import type { TextUIPart, FileUIPart } from 'ai';
 import { useMCPStore } from '~/lib/stores/mcp';
 import type { LlmErrorAlertType } from '~/types/actions';
 
@@ -57,11 +58,11 @@ export function Chat() {
 
 const processSampledMessages = createSampler(
   (options: {
-    messages: Message[];
-    initialMessages: Message[];
+    messages: UIMessage[];
+    initialMessages: UIMessage[];
     isLoading: boolean;
-    parseMessages: (messages: Message[], isLoading: boolean) => void;
-    storeMessageHistory: (messages: Message[]) => Promise<void>;
+    parseMessages: (messages: UIMessage[], isLoading: boolean) => void;
+    storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
   }) => {
     const { messages, initialMessages, isLoading, parseMessages, storeMessageHistory } = options;
     parseMessages(messages, isLoading);
@@ -74,9 +75,9 @@ const processSampledMessages = createSampler(
 );
 
 interface ChatProps {
-  initialMessages: Message[];
-  storeMessageHistory: (messages: Message[]) => Promise<void>;
-  importChat: (description: string, messages: Message[]) => Promise<void>;
+  initialMessages: UIMessage[];
+  storeMessageHistory: (messages: UIMessage[]) => Promise<void>;
+  importChat: (description: string, messages: UIMessage[]) => Promise<void>;
   exportChat: () => void;
   description?: string;
 }
@@ -117,65 +118,97 @@ export const ChatImpl = memo(
     const [selectedElement, setSelectedElement] = useState<ElementInfo | null>(null);
     const mcpSettings = useMCPStore((state) => state.settings);
 
+    const [input, setInput] = useState(Cookies.get(PROMPT_COOKIE_KEY) || '');
+    const [chatData, setChatData] = useState<any>(undefined);
+
     const {
       messages,
-      isLoading,
-      input,
-      handleInputChange,
-      setInput,
+      status,
+      sendMessage: sendChatMessage,
+      regenerate,
       stop,
-      append,
       setMessages,
-      reload,
       error,
-      data: chatData,
-      setData,
-      addToolResult,
+      addToolResult: addToolResultFromHook,
     } = useChat({
-      api: '/api/chat',
-      body: {
-        apiKeys,
-        files,
-        promptId,
-        contextOptimization: contextOptimizationEnabled,
-        chatMode,
-        designScheme,
-        supabase: {
-          isConnected: supabaseConn.isConnected,
-          hasSelectedProject: !!selectedProject,
-          credentials: {
-            supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
-            anonKey: supabaseConn?.credentials?.anonKey,
-          },
+      transport: new (HttpChatTransport as any)({
+        api: '/api/chat',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        maxLLMSteps: mcpSettings.maxLLMSteps,
-      },
-      sendExtraMessageFields: true,
+        body: {
+          apiKeys,
+          files,
+          promptId,
+          contextOptimization: contextOptimizationEnabled,
+          chatMode,
+          designScheme,
+          supabase: {
+            isConnected: supabaseConn.isConnected,
+            hasSelectedProject: !!selectedProject,
+            credentials: {
+              supabaseUrl: supabaseConn?.credentials?.supabaseUrl,
+              anonKey: supabaseConn?.credentials?.anonKey,
+            },
+          },
+          maxLLMSteps: mcpSettings.maxLLMSteps,
+        },
+      }),
       onError: (e) => {
         setFakeLoading(false);
         handleError(e, 'chat');
       },
-      onFinish: (message, response) => {
-        const usage = response.usage;
-        setData(undefined);
+      onFinish: ({ messages: finishedMessages }) => {
+        setChatData(undefined);
 
-        if (usage) {
-          console.log('Token usage:', usage);
+        const lastMessage = finishedMessages[finishedMessages.length - 1];
+
+        // Extract usage from message annotations if available
+        const usageAnnotation = (lastMessage as any)?.annotations?.find((ann: any) => ann?.type === 'usage');
+
+        if (usageAnnotation?.value) {
+          console.log('Token usage:', usageAnnotation.value);
+
+          const textParts = lastMessage?.parts?.filter((p: any) => p.type === 'text') || [];
+          const contentLength = textParts.reduce((acc: number, part: any) => acc + (part.text?.length || 0), 0);
           logStore.logProvider('Chat response completed', {
             component: 'Chat',
             action: 'response',
             model,
             provider: provider.name,
-            usage,
-            messageLength: message.content.length,
+            usage: usageAnnotation.value,
+            messageLength: contentLength,
           });
         }
 
         logger.debug('Finished streaming');
       },
-      initialMessages,
-      initialInput: Cookies.get(PROMPT_COOKIE_KEY) || '',
+      messages: initialMessages,
     });
+
+    // Adapter for addToolResult to match the old API
+    const addToolResult = useCallback(
+      ({ toolCallId, result }: { toolCallId: string; result: any }) => {
+        // Find the tool name from the current messages
+        const lastMessage = messages[messages.length - 1];
+        const toolPart = lastMessage?.parts?.find(
+          (p: any) => p.type === 'tool-call' && p.toolCallId === toolCallId,
+        ) as any;
+        const toolName = toolPart?.toolName || '';
+
+        if (toolName) {
+          addToolResultFromHook({
+            tool: toolName as any,
+            toolCallId,
+            output: result,
+            state: 'output-available',
+          });
+        }
+      },
+      [messages, addToolResultFromHook],
+    );
+
+    const isLoading = status === 'submitted' || status === 'streaming';
     useEffect(() => {
       const prompt = searchParams.get('prompt');
 
@@ -184,9 +217,8 @@ export const ChatImpl = memo(
       if (prompt) {
         setSearchParams({});
         runAnimation();
-        append({
-          role: 'user',
-          content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
+        sendChatMessage({
+          text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${prompt}`,
         });
       }
     }, [model, provider, searchParams]);
@@ -296,7 +328,7 @@ export const ChatImpl = memo(
           provider: provider.name,
           errorType,
         });
-        setData([]);
+        setChatData([]);
       },
       [provider.name, stop],
     );
@@ -346,44 +378,17 @@ export const ChatImpl = memo(
       // Add image parts if any
       images.forEach((imageData) => {
         // Extract correct MIME type from the data URL
-        const mimeType = imageData.split(';')[0].split(':')[1] || 'image/jpeg';
+        const mediaType = imageData.split(';')[0].split(':')[1] || 'image/jpeg';
 
         // Create file part according to AI SDK format
         parts.push({
           type: 'file',
-          mimeType,
-          data: imageData.replace(/^data:image\/[^;]+;base64,/, ''),
+          mediaType,
+          url: imageData,
         });
       });
 
       return parts;
-    };
-
-    // Helper function to convert File[] to Attachment[] for AI SDK
-    const filesToAttachments = async (files: File[]): Promise<Attachment[] | undefined> => {
-      if (files.length === 0) {
-        return undefined;
-      }
-
-      const attachments = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise<Attachment>((resolve) => {
-              const reader = new FileReader();
-
-              reader.onloadend = () => {
-                resolve({
-                  name: file.name,
-                  contentType: file.type,
-                  url: reader.result as string,
-                });
-              };
-              reader.readAsDataURL(file);
-            }),
-        ),
-      );
-
-      return attachments;
     };
 
     const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
@@ -438,28 +443,23 @@ export const ChatImpl = memo(
                 {
                   id: `1-${new Date().getTime()}`,
                   role: 'user',
-                  content: userMessageText,
                   parts: createMessageParts(userMessageText, imageDataList),
                 },
                 {
                   id: `2-${new Date().getTime()}`,
                   role: 'assistant',
-                  content: assistantMessage,
+                  parts: [{ type: 'text', text: assistantMessage }],
                 },
                 {
                   id: `3-${new Date().getTime()}`,
                   role: 'user',
-                  content: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}`,
-                  annotations: ['hidden'],
+                  parts: [
+                    { type: 'text', text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userMessage}` },
+                  ],
                 },
               ]);
 
-              const reloadOptions =
-                uploadedFiles.length > 0
-                  ? { experimental_attachments: await filesToAttachments(uploadedFiles) }
-                  : undefined;
-
-              reload(reloadOptions);
+              regenerate();
               setInput('');
               Cookies.remove(PROMPT_COOKIE_KEY);
 
@@ -478,18 +478,17 @@ export const ChatImpl = memo(
 
         // If autoSelectTemplate is disabled or template selection failed, proceed with normal message
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
-        const attachments = uploadedFiles.length > 0 ? await filesToAttachments(uploadedFiles) : undefined;
-
         setMessages([
           {
             id: `${new Date().getTime()}`,
             role: 'user',
-            content: userMessageText,
             parts: createMessageParts(userMessageText, imageDataList),
-            experimental_attachments: attachments,
           },
         ]);
-        reload(attachments ? { experimental_attachments: attachments } : undefined);
+
+        const messageParts = createMessageParts(userMessageText, imageDataList);
+        const fileParts = messageParts.filter((p): p is FileUIPart => p.type === 'file');
+        sendChatMessage(fileParts.length > 0 ? { files: fileParts } : { text: userMessageText });
         setFakeLoading(false);
         setInput('');
         Cookies.remove(PROMPT_COOKIE_KEY);
@@ -516,33 +515,17 @@ export const ChatImpl = memo(
         const userUpdateArtifact = filesToArtifacts(modifiedFiles, `${Date.now()}`);
         const messageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userUpdateArtifact}${finalMessageContent}`;
 
-        const attachmentOptions =
-          uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
-
-        append(
-          {
-            role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
-          },
-          attachmentOptions,
-        );
+        const messageParts = createMessageParts(messageText, imageDataList);
+        const fileParts = messageParts.filter((p): p is FileUIPart => p.type === 'file');
+        sendChatMessage(fileParts.length > 0 ? { files: fileParts } : { text: messageText });
 
         workbenchStore.resetAllFileModifications();
       } else {
         const messageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
 
-        const attachmentOptions =
-          uploadedFiles.length > 0 ? { experimental_attachments: await filesToAttachments(uploadedFiles) } : undefined;
-
-        append(
-          {
-            role: 'user',
-            content: messageText,
-            parts: createMessageParts(messageText, imageDataList),
-          },
-          attachmentOptions,
-        );
+        const messageParts = createMessageParts(messageText, imageDataList);
+        const fileParts = messageParts.filter((p): p is FileUIPart => p.type === 'file');
+        sendChatMessage(fileParts.length > 0 ? { files: fileParts } : { text: messageText });
       }
 
       setInput('');
@@ -554,14 +537,6 @@ export const ChatImpl = memo(
       resetEnhancer();
 
       textareaRef.current?.blur();
-    };
-
-    /**
-     * Handles the change event for the textarea and updates the input state.
-     * @param event - The change event from the textarea.
-     */
-    const onTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      handleInputChange(event);
     };
 
     /**
@@ -614,7 +589,7 @@ export const ChatImpl = memo(
         setProvider={handleProviderChange}
         providerList={activeProviders}
         handleInputChange={(e) => {
-          onTextareaChange(e);
+          setInput(e.target.value);
           debouncedCachePrompt(e);
         }}
         handleStop={abort}
@@ -658,7 +633,6 @@ export const ChatImpl = memo(
         data={chatData}
         chatMode={chatMode}
         setChatMode={setChatMode}
-        append={append}
         designScheme={designScheme}
         setDesignScheme={setDesignScheme}
         selectedElement={selectedElement}

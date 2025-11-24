@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import { Bar, Pie } from 'react-chartjs-2';
 import type { Chat } from '~/lib/persistence/chats';
+import type { UIMessage } from 'ai';
 import { classNames } from '~/utils/classNames';
 
 // Register ChartJS components
@@ -57,16 +58,41 @@ export function DataVisualization({ chats }: DataVisualizationProps) {
     const apiUsage: Record<string, number> = {};
     let totalMessages = 0;
 
+    const extractMessageText = (message: UIMessage): string => {
+      if (Array.isArray(message.parts)) {
+        return message.parts
+          .filter((part) => (part as any)?.type === 'text')
+          .map((part) => ((part as any)?.text as string) || '')
+          .join('\n');
+      }
+
+      const legacyContent = (message as any).content;
+
+      if (typeof legacyContent === 'string') {
+        return legacyContent;
+      }
+
+      if (Array.isArray(legacyContent)) {
+        return legacyContent
+          .filter((part) => (part as any)?.type === 'text')
+          .map((part) => (part as any).text || '')
+          .join('\n');
+      }
+
+      return '';
+    };
+
     chats.forEach((chat) => {
       const date = new Date(chat.timestamp).toLocaleDateString();
       chatDates[date] = (chatDates[date] || 0) + 1;
 
       chat.messages.forEach((message) => {
+        const messageText = extractMessageText(message);
         roleCounts[message.role] = (roleCounts[message.role] || 0) + 1;
         totalMessages++;
 
         if (message.role === 'assistant') {
-          const providerMatch = message.content.match(/provider:\s*([\w-]+)/i);
+          const providerMatch = messageText.match(/provider:\s*([\w-]+)/i);
           const provider = providerMatch ? providerMatch[1] : 'unknown';
           apiUsage[provider] = (apiUsage[provider] || 0) + 1;
         }

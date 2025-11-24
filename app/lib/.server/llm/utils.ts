@@ -1,10 +1,10 @@
-import { type Message } from 'ai';
+import { type CoreMessage } from 'ai';
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 import { IGNORE_PATTERNS, type FileMap } from './constants';
 import ignore from 'ignore';
 import type { ContextAnnotation } from '~/types/context';
 
-export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
+export function extractPropertiesFromMessage(message: CoreMessage): {
   model: string;
   provider: string;
   content: string;
@@ -29,7 +29,7 @@ export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
   const provider = providerMatch ? providerMatch[1] : DEFAULT_PROVIDER.name;
 
   const cleanedContent = Array.isArray(message.content)
-    ? message.content.map((item) => {
+    ? message.content.map((item: any) => {
         if (item.type === 'text') {
           return {
             type: 'text',
@@ -41,7 +41,7 @@ export function extractPropertiesFromMessage(message: Omit<Message, 'id'>): {
       })
     : textContent.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '');
 
-  return { model, provider, content: cleanedContent };
+  return { model, provider, content: typeof cleanedContent === 'string' ? cleanedContent : textContent };
 }
 
 export function simplifyBoltActions(input: string): string {
@@ -88,7 +88,7 @@ export function createFilesContext(files: FileMap, useRelativePath?: boolean) {
   return `<boltArtifact id="code-content" title="Code Content" >\n${fileContexts.join('\n')}\n</boltArtifact>`;
 }
 
-export function extractCurrentContext(messages: Message[]) {
+export function extractCurrentContext(messages: CoreMessage[]) {
   const lastAssistantMessage = messages.filter((x) => x.role == 'assistant').slice(-1)[0];
 
   if (!lastAssistantMessage) {
@@ -98,12 +98,14 @@ export function extractCurrentContext(messages: Message[]) {
   let summary: ContextAnnotation | undefined;
   let codeContext: ContextAnnotation | undefined;
 
-  if (!lastAssistantMessage.annotations?.length) {
+  const annotations = (lastAssistantMessage as any)?.annotations;
+
+  if (!Array.isArray(annotations) || annotations.length === 0) {
     return { summary: undefined, codeContext: undefined };
   }
 
-  for (let i = 0; i < lastAssistantMessage.annotations.length; i++) {
-    const annotation = lastAssistantMessage.annotations[i];
+  for (let i = 0; i < annotations.length; i++) {
+    const annotation = annotations[i];
 
     if (!annotation || typeof annotation !== 'object') {
       continue;

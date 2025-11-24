@@ -1,5 +1,5 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
-import { createDataStream, generateId } from 'ai';
+import { createUIMessageStream, type UIMessage, convertToCoreMessages } from 'ai';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { streamText, type Messages, type StreamingOptions } from '~/lib/.server/llm/stream-text';
@@ -48,24 +48,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     },
   });
 
-  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme, maxLLMSteps } =
-    await request.json<{
-      messages: Messages;
-      files: any;
-      promptId?: string;
-      contextOptimization: boolean;
-      chatMode: 'discuss' | 'build';
-      designScheme?: DesignScheme;
-      supabase?: {
-        isConnected: boolean;
-        hasSelectedProject: boolean;
-        credentials?: {
-          anonKey?: string;
-          supabaseUrl?: string;
-        };
+  const { messages, files, promptId, contextOptimization, supabase, chatMode, designScheme } = await request.json<{
+    messages: Messages;
+    files: any;
+    promptId?: string;
+    contextOptimization: boolean;
+    chatMode: 'discuss' | 'build';
+    designScheme?: DesignScheme;
+    supabase?: {
+      isConnected: boolean;
+      hasSelectedProject: boolean;
+      credentials?: {
+        anonKey?: string;
+        supabaseUrl?: string;
       };
-      maxLLMSteps: number;
-    }>();
+    };
+  }>();
 
   const cookieHeader = request.headers.get('Cookie');
   const apiKeys = JSON.parse(parseCookies(cookieHeader || '').apiKeys || '{}');
@@ -80,18 +78,40 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
     promptTokens: 0,
     totalTokens: 0,
   };
-  const encoder: TextEncoder = new TextEncoder();
   let progressCounter: number = 1;
 
   try {
     const mcpService = MCPService.getInstance();
-    const totalMessageContent = messages.reduce((acc, message) => acc + message.content, '');
-    logger.debug(`Total message length: ${totalMessageContent.split(' ').length}, words`);
 
-    let lastChunk: string | undefined = undefined;
+    const getMessageText = (message: UIMessage): string => {
+      if (Array.isArray(message.parts)) {
+        return message.parts
+          .filter((part) => (part as any)?.type === 'text')
+          .map((part) => ((part as any)?.text as string) || '')
+          .join('\n');
+      }
 
-    const dataStream = createDataStream({
-      async execute(dataStream) {
+      const legacyContent = (message as any).content;
+
+      if (typeof legacyContent === 'string') {
+        return legacyContent;
+      }
+
+      if (Array.isArray(legacyContent)) {
+        return legacyContent
+          .filter((part) => (part as any)?.type === 'text')
+          .map((part) => (part as any).text || '')
+          .join('\n');
+      }
+
+      return '';
+    };
+
+    const totalMessageContent = (messages as any[]).map((message) => getMessageText(message)).join('\n');
+    logger.debug(`Total message length: ${totalMessageContent.split(/\s+/).filter(Boolean).length} words`);
+
+    const uiMessageStream = createUIMessageStream({
+      async execute({ writer }) {
         streamRecovery.startMonitoring();
 
         const filePaths = getFilePaths(files || {});
@@ -99,7 +119,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         let summary: string | undefined = undefined;
         let messageSliceId = 0;
 
-        const processedMessages = await mcpService.processToolInvocations(messages, dataStream);
+        const processedMessages = await mcpService.processToolInvocations(messages as unknown as UIMessage[], writer);
 
         if (processedMessages.length > 3) {
           messageSliceId = processedMessages.length - 3;
@@ -107,19 +127,22 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         if (filePaths.length > 0 && contextOptimization) {
           logger.debug('Generating Chat Summary');
-          dataStream.writeData({
-            type: 'progress',
-            label: 'summary',
-            status: 'in-progress',
-            order: progressCounter++,
-            message: 'Analysing Request',
-          } satisfies ProgressAnnotation);
+          writer.write({
+            type: 'data-progress',
+            data: {
+              type: 'progress',
+              label: 'summary',
+              status: 'in-progress',
+              order: progressCounter++,
+              message: 'Analysing Request',
+            } satisfies ProgressAnnotation,
+          });
 
           // Create a summary of the chat
           console.log(`Messages count: ${processedMessages.length}`);
 
           summary = await createSummary({
-            messages: [...processedMessages],
+            messages: convertToCoreMessages(processedMessages),
             env: context.cloudflare?.env,
             apiKeys,
             providerSettings,
@@ -128,40 +151,66 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             onFinish(resp) {
               if (resp.usage) {
                 logger.debug('createSummary token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+
+                const promptTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'promptTokens' in resp.usage
+                    ? ((resp.usage as any).promptTokens as number)
+                    : typeof resp.usage === 'object' && resp.usage !== null && 'inputTokens' in resp.usage
+                      ? ((resp.usage as any).inputTokens as number)
+                      : 0;
+                const completionTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'completionTokens' in resp.usage
+                    ? ((resp.usage as any).completionTokens as number)
+                    : typeof resp.usage === 'object' && resp.usage !== null && 'outputTokens' in resp.usage
+                      ? ((resp.usage as any).outputTokens as number)
+                      : 0;
+                const totalTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'totalTokens' in resp.usage
+                    ? ((resp.usage as any).totalTokens as number)
+                    : promptTokens + completionTokens;
+                cumulativeUsage.completionTokens += completionTokens || 0;
+                cumulativeUsage.promptTokens += promptTokens || 0;
+                cumulativeUsage.totalTokens += totalTokens || 0;
               }
             },
           });
-          dataStream.writeData({
-            type: 'progress',
-            label: 'summary',
-            status: 'complete',
-            order: progressCounter++,
-            message: 'Analysis Complete',
-          } satisfies ProgressAnnotation);
+          writer.write({
+            type: 'data-progress',
+            data: {
+              type: 'progress',
+              label: 'summary',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Analysis Complete',
+            } satisfies ProgressAnnotation,
+          });
 
-          dataStream.writeMessageAnnotation({
-            type: 'chatSummary',
-            summary,
-            chatId: processedMessages.slice(-1)?.[0]?.id,
-          } as ContextAnnotation);
+          writer.write({
+            type: 'data-chatSummary',
+            data: {
+              type: 'chatSummary',
+              summary,
+              chatId: processedMessages.slice(-1)?.[0]?.id,
+            } as ContextAnnotation,
+          });
 
           // Update context buffer
           logger.debug('Updating Context Buffer');
-          dataStream.writeData({
-            type: 'progress',
-            label: 'context',
-            status: 'in-progress',
-            order: progressCounter++,
-            message: 'Determining Files to Read',
-          } satisfies ProgressAnnotation);
+          writer.write({
+            type: 'data-progress',
+            data: {
+              type: 'progress',
+              label: 'context',
+              status: 'in-progress',
+              order: progressCounter++,
+              message: 'Determining Files to Read',
+            } satisfies ProgressAnnotation,
+          });
 
           // Select context files
           console.log(`Messages count: ${processedMessages.length}`);
           filteredFiles = await selectContext({
-            messages: [...processedMessages],
+            messages: convertToCoreMessages(processedMessages),
             env: context.cloudflare?.env,
             apiKeys,
             files,
@@ -172,9 +221,26 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             onFinish(resp) {
               if (resp.usage) {
                 logger.debug('selectContext token usage', JSON.stringify(resp.usage));
-                cumulativeUsage.completionTokens += resp.usage.completionTokens || 0;
-                cumulativeUsage.promptTokens += resp.usage.promptTokens || 0;
-                cumulativeUsage.totalTokens += resp.usage.totalTokens || 0;
+
+                const promptTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'promptTokens' in resp.usage
+                    ? ((resp.usage as any).promptTokens as number)
+                    : typeof resp.usage === 'object' && resp.usage !== null && 'inputTokens' in resp.usage
+                      ? ((resp.usage as any).inputTokens as number)
+                      : 0;
+                const completionTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'completionTokens' in resp.usage
+                    ? ((resp.usage as any).completionTokens as number)
+                    : typeof resp.usage === 'object' && resp.usage !== null && 'outputTokens' in resp.usage
+                      ? ((resp.usage as any).outputTokens as number)
+                      : 0;
+                const totalTokens =
+                  typeof resp.usage === 'object' && resp.usage !== null && 'totalTokens' in resp.usage
+                    ? ((resp.usage as any).totalTokens as number)
+                    : promptTokens + completionTokens;
+                cumulativeUsage.completionTokens += completionTokens || 0;
+                cumulativeUsage.promptTokens += promptTokens || 0;
+                cumulativeUsage.totalTokens += totalTokens || 0;
               }
             },
           });
@@ -183,26 +249,32 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             logger.debug(`files in context : ${JSON.stringify(Object.keys(filteredFiles))}`);
           }
 
-          dataStream.writeMessageAnnotation({
-            type: 'codeContext',
-            files: Object.keys(filteredFiles).map((key) => {
-              let path = key;
+          writer.write({
+            type: 'data-codeContext',
+            data: {
+              type: 'codeContext',
+              files: Object.keys(filteredFiles).map((key) => {
+                let path = key;
 
-              if (path.startsWith(WORK_DIR)) {
-                path = path.replace(WORK_DIR, '');
-              }
+                if (path.startsWith(WORK_DIR)) {
+                  path = path.replace(WORK_DIR, '');
+                }
 
-              return path;
-            }),
-          } as ContextAnnotation);
+                return path;
+              }),
+            } as ContextAnnotation,
+          });
 
-          dataStream.writeData({
-            type: 'progress',
-            label: 'context',
-            status: 'complete',
-            order: progressCounter++,
-            message: 'Code Files Selected',
-          } satisfies ProgressAnnotation);
+          writer.write({
+            type: 'data-progress',
+            data: {
+              type: 'progress',
+              label: 'context',
+              status: 'complete',
+              order: progressCounter++,
+              message: 'Code Files Selected',
+            } satisfies ProgressAnnotation,
+          });
 
           // logger.debug('Code Files Selected');
         }
@@ -211,38 +283,69 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           supabaseConnection: supabase,
           toolChoice: 'auto',
           tools: mcpService.toolsWithoutExecute,
-          maxSteps: maxLLMSteps,
+
+          // maxSteps removed in v5, use maxToolRoundtrips instead if needed
           onStepFinish: ({ toolCalls }) => {
             // add tool call annotations for frontend processing
             toolCalls.forEach((toolCall) => {
-              mcpService.processToolCall(toolCall, dataStream);
+              mcpService.processToolCall(
+                {
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  args: (toolCall as any).input || (toolCall as any).args || {},
+                },
+                writer,
+              );
             });
           },
           onFinish: async ({ text: content, finishReason, usage }) => {
             logger.debug('usage', JSON.stringify(usage));
 
             if (usage) {
-              cumulativeUsage.completionTokens += usage.completionTokens || 0;
-              cumulativeUsage.promptTokens += usage.promptTokens || 0;
-              cumulativeUsage.totalTokens += usage.totalTokens || 0;
+              // LanguageModelUsage structure: { promptTokens, completionTokens, totalTokens } or similar
+              const promptTokens =
+                typeof usage === 'object' && usage !== null && 'promptTokens' in usage
+                  ? ((usage as any).promptTokens as number)
+                  : typeof usage === 'object' && usage !== null && 'inputTokens' in usage
+                    ? ((usage as any).inputTokens as number)
+                    : 0;
+              const completionTokens =
+                typeof usage === 'object' && usage !== null && 'completionTokens' in usage
+                  ? ((usage as any).completionTokens as number)
+                  : typeof usage === 'object' && usage !== null && 'outputTokens' in usage
+                    ? ((usage as any).outputTokens as number)
+                    : 0;
+              const totalTokens =
+                typeof usage === 'object' && usage !== null && 'totalTokens' in usage
+                  ? ((usage as any).totalTokens as number)
+                  : promptTokens + completionTokens;
+              cumulativeUsage.completionTokens += completionTokens || 0;
+              cumulativeUsage.promptTokens += promptTokens || 0;
+              cumulativeUsage.totalTokens += totalTokens || 0;
             }
 
             if (finishReason !== 'length') {
-              dataStream.writeMessageAnnotation({
-                type: 'usage',
-                value: {
-                  completionTokens: cumulativeUsage.completionTokens,
-                  promptTokens: cumulativeUsage.promptTokens,
-                  totalTokens: cumulativeUsage.totalTokens,
+              writer.write({
+                type: 'data-usage',
+                data: {
+                  type: 'usage',
+                  value: {
+                    completionTokens: cumulativeUsage.completionTokens,
+                    promptTokens: cumulativeUsage.promptTokens,
+                    totalTokens: cumulativeUsage.totalTokens,
+                  },
                 },
               });
-              dataStream.writeData({
-                type: 'progress',
-                label: 'response',
-                status: 'complete',
-                order: progressCounter++,
-                message: 'Response Generated',
-              } satisfies ProgressAnnotation);
+              writer.write({
+                type: 'data-progress',
+                data: {
+                  type: 'progress',
+                  label: 'response',
+                  status: 'complete',
+                  order: progressCounter++,
+                  message: 'Response Generated',
+                } satisfies ProgressAnnotation,
+              });
               await new Promise((resolve) => setTimeout(resolve, 0));
 
               // stream.close();
@@ -258,16 +361,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             logger.info(`Reached max token limit (${MAX_TOKENS}): Continuing message (${switchesLeft} switches left)`);
 
             const lastUserMessage = processedMessages.filter((x) => x.role == 'user').slice(-1)[0];
-            const { model, provider } = extractPropertiesFromMessage(lastUserMessage);
-            processedMessages.push({ id: generateId(), role: 'assistant', content });
-            processedMessages.push({
-              id: generateId(),
+            const { model, provider } = extractPropertiesFromMessage(convertToCoreMessages([lastUserMessage])[0]);
+            const coreMessages = convertToCoreMessages(processedMessages);
+            coreMessages.push({ role: 'assistant', content });
+            coreMessages.push({
               role: 'user',
               content: `[Model: ${model}]\n\n[Provider: ${provider}]\n\n${CONTINUE_PROMPT}`,
             });
 
             const result = await streamText({
-              messages: [...processedMessages],
+              messages: coreMessages,
               env: context.cloudflare?.env,
               options,
               apiKeys,
@@ -282,7 +385,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               messageSliceId,
             });
 
-            result.mergeIntoDataStream(dataStream);
+            writer.merge(result.toUIMessageStream());
 
             (async () => {
               for await (const part of result.fullStream) {
@@ -299,16 +402,19 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           },
         };
 
-        dataStream.writeData({
-          type: 'progress',
-          label: 'response',
-          status: 'in-progress',
-          order: progressCounter++,
-          message: 'Generating Response',
-        } satisfies ProgressAnnotation);
+        writer.write({
+          type: 'data-progress',
+          data: {
+            type: 'progress',
+            label: 'response',
+            status: 'in-progress',
+            order: progressCounter++,
+            message: 'Generating Response',
+          } satisfies ProgressAnnotation,
+        });
 
         const result = await streamText({
-          messages: [...processedMessages],
+          messages: convertToCoreMessages(processedMessages),
           env: context.cloudflare?.env,
           options,
           apiKeys,
@@ -344,7 +450,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
           }
           streamRecovery.stop();
         })();
-        result.mergeIntoDataStream(dataStream);
+        writer.merge(result.toUIMessageStream());
       },
       onError: (error: any) => {
         // Provide more specific error messages for common issues
@@ -380,45 +486,10 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         return `Custom error: ${errorMessage}`;
       },
-    }).pipeThrough(
-      new TransformStream({
-        transform: (chunk, controller) => {
-          if (!lastChunk) {
-            lastChunk = ' ';
-          }
+      originalMessages: messages as unknown as UIMessage[],
+    });
 
-          if (typeof chunk === 'string') {
-            if (chunk.startsWith('g') && !lastChunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0: "<div class=\\"__boltThought__\\">"\n`));
-            }
-
-            if (lastChunk.startsWith('g') && !chunk.startsWith('g')) {
-              controller.enqueue(encoder.encode(`0: "</div>\\n"\n`));
-            }
-          }
-
-          lastChunk = chunk;
-
-          let transformedChunk = chunk;
-
-          if (typeof chunk === 'string' && chunk.startsWith('g')) {
-            let content = chunk.split(':').slice(1).join(':');
-
-            if (content.endsWith('\n')) {
-              content = content.slice(0, content.length - 1);
-            }
-
-            transformedChunk = `0:${content}\n`;
-          }
-
-          // Convert the string stream to a byte stream
-          const str = typeof transformedChunk === 'string' ? transformedChunk : JSON.stringify(transformedChunk);
-          controller.enqueue(encoder.encode(str));
-        },
-      }),
-    );
-
-    return new Response(dataStream, {
+    return new Response(uiMessageStream, {
       status: 200,
       headers: {
         'Content-Type': 'text/event-stream; charset=utf-8',
