@@ -105,7 +105,7 @@ export function TabsWithSlider({
           width: sliderDimensions.width,
           x: sliderDimensions.left,
         }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        transition={{ type: 'spring' as const, stiffness: 300, damping: 30 }}
       />
     </div>
   );

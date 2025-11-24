@@ -46,7 +46,7 @@ export function SearchResultItem({
       whileHover={{
         scale: 1.01,
         y: -1,
-        transition: { type: 'spring', stiffness: 400, damping: 17 },
+        transition: { type: 'spring' as const, stiffness: 400, damping: 17 },
       }}
       whileTap={{ scale: 0.99 }}
       initial={{ opacity: 0, y: 10 }}

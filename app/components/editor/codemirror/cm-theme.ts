@@ -1,21 +1,33 @@
 import { Compartment, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import {
+  defaultSettingsVscodeDark,
+  defaultSettingsVscodeLight,
+  vscodeDarkStyle,
+  vscodeLightStyle,
+} from '@uiw/codemirror-theme-vscode';
+import { createTheme as createVSCodeTheme } from '@uiw/codemirror-themes';
 import type { EditorSettings } from './CodeMirrorEditor.js';
 import type { Theme } from '~/types/theme.js';
 
 export const darkTheme = EditorView.theme({}, { dark: true });
 export const themeSelection = new Compartment();
 
+type VSCodeStyle = (typeof vscodeLightStyle)[number];
+type VSCodeThemeSettings = typeof defaultSettingsVscodeLight;
+
+const sanitizedVscodeLight = createVSCodeExtension('light', defaultSettingsVscodeLight, vscodeLightStyle);
+const sanitizedVscodeDark = createVSCodeExtension('dark', defaultSettingsVscodeDark, vscodeDarkStyle);
+
 export function getTheme(theme: Theme, settings: EditorSettings = {}): Extension {
   return [
     getEditorTheme(settings),
-    theme === 'dark' ? themeSelection.of([getDarkTheme()]) : themeSelection.of([getLightTheme()]),
+    theme === 'dark' ? themeSelection.of([sanitizedVscodeDark]) : themeSelection.of([sanitizedVscodeLight]),
   ];
 }
 
 export function reconfigureTheme(theme: Theme) {
-  return themeSelection.reconfigure(theme === 'dark' ? getDarkTheme() : getLightTheme());
+  return themeSelection.reconfigure(theme === 'dark' ? sanitizedVscodeDark : sanitizedVscodeLight);
 }
 
 function getEditorTheme(settings: EditorSettings) {
@@ -183,10 +195,36 @@ function getEditorTheme(settings: EditorSettings) {
   });
 }
 
-function getLightTheme() {
-  return vscodeLight;
-}
+function createVSCodeExtension(theme: 'light' | 'dark', defaults: VSCodeThemeSettings, styles: VSCodeStyle[]) {
+  const sanitizedStyles: VSCodeStyle[] = [];
 
-function getDarkTheme() {
-  return vscodeDark;
+  for (const style of styles) {
+    const tag = style?.tag as VSCodeStyle['tag'];
+
+    if (!tag) {
+      continue;
+    }
+
+    const tags = Array.isArray(tag) ? tag : [tag];
+    const validTags = tags.filter((entry) => typeof entry === 'object' && entry !== null && Array.isArray(entry.set));
+
+    if (!validTags.length) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[CodeMirror] Dropped invalid highlight style entry:', style);
+      }
+
+      continue;
+    }
+
+    sanitizedStyles.push({
+      ...style,
+      tag: validTags.length === 1 ? validTags[0] : validTags,
+    });
+  }
+
+  return createVSCodeTheme({
+    theme,
+    settings: { ...defaults },
+    styles: sanitizedStyles,
+  });
 }
