@@ -6,7 +6,8 @@
       "vite/client",
       "@cloudflare/workers-types",
       "@types/dom-speech-recognition",
-      "electron"
+      "electron",
+      "react"
     ],
     "isolatedModules": true,
     "esModuleInterop": true,
