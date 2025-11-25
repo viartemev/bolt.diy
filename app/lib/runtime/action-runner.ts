@@ -187,6 +187,109 @@ export class ActionRunner {
           break;
         }
         case 'start': {
+          /*
+           * Wait for all previous shell actions to complete successfully before starting
+           * This ensures npm install completes before npm run dev
+           */
+          const actions = this.actions.get();
+          const shellActions = Object.values(actions).filter((a) => a.type === 'shell');
+
+          // Check if any shell actions are still running or pending
+          const pendingShellActions = shellActions.filter((a) => a.status === 'running' || a.status === 'pending');
+
+          if (pendingShellActions.length > 0) {
+            /*
+             * Wait for all pending shell actions to complete
+             * Poll every 100ms until all shell actions are complete, failed, or aborted
+             */
+            while (pendingShellActions.length > 0) {
+              const currentActions = this.actions.get();
+              const actionEntries = Object.entries(currentActions);
+
+              const stillPending = pendingShellActions.filter((a) => {
+                const [, currentAction] = actionEntries.find(([, action]) => action === a) || [null, null];
+                return currentAction && (currentAction.status === 'running' || currentAction.status === 'pending');
+              });
+
+              if (stillPending.length === 0) {
+                break;
+              }
+
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+          }
+
+          // Check if any shell actions failed or were aborted
+          const failedOrAbortedShellActions = shellActions.filter(
+            (a) => a.status === 'failed' || a.status === 'aborted',
+          );
+
+          if (failedOrAbortedShellActions.length > 0) {
+            // Don't start if previous shell actions failed or were aborted
+            const errorMessage = failedOrAbortedShellActions.some((a) => a.status === 'aborted')
+              ? 'Previous setup command was interrupted. Please complete the setup before starting the application.'
+              : 'Previous setup command failed. Please fix the errors before starting the application.';
+
+            this.#updateAction(actionId, { status: 'failed', error: errorMessage });
+
+            this.onAlert?.({
+              type: 'error',
+              title: 'Cannot Start Application',
+              description: errorMessage,
+              content: 'Please ensure all setup commands complete successfully before starting the application.',
+            });
+
+            return;
+          }
+
+          /*
+           * Check if node_modules exists for npm/pnpm/yarn projects
+           * This ensures dependencies are installed even if the install command was interrupted
+           */
+          if (
+            action.content.includes('npm run') ||
+            action.content.includes('pnpm run') ||
+            action.content.includes('yarn')
+          ) {
+            try {
+              const webcontainer = await this.#webcontainer;
+              const packageJsonPath = nodePath.join(webcontainer.workdir, 'package.json');
+
+              // Check if package.json exists
+              try {
+                await webcontainer.fs.readFile(packageJsonPath, 'utf-8');
+
+                // Check if node_modules exists
+                const nodeModulesPath = nodePath.join(webcontainer.workdir, 'node_modules');
+
+                try {
+                  await webcontainer.fs.readdir(nodeModulesPath);
+                } catch {
+                  // node_modules doesn't exist, need to install dependencies
+                  const errorMessage = 'Dependencies are not installed. Please run "npm install" first.';
+
+                  this.#updateAction(actionId, { status: 'failed', error: errorMessage });
+
+                  this.onAlert?.({
+                    type: 'error',
+                    title: 'Cannot Start Application',
+                    description: errorMessage,
+                    content:
+                      'The project dependencies have not been installed. Please run the setup command to install dependencies before starting the application.',
+                  });
+
+                  return;
+                }
+              } catch {
+                // package.json doesn't exist, skip the check
+              }
+            } catch (error) {
+              logger.debug('Failed to check for node_modules:', error);
+
+              // Continue anyway if check fails
+            }
+          }
+
           // making the start app non blocking
 
           this.#runStartAction(action)
@@ -275,7 +378,7 @@ export class ActionRunner {
     logger.debug(`${action.type} Shell Response: [exit code:${resp?.exitCode}]`);
 
     if (resp?.exitCode != 0) {
-      const enhancedError = this.#createEnhancedShellError(action.content, resp?.exitCode, resp?.output);
+      const enhancedError = await this.#createEnhancedShellError(action.content, resp?.exitCode, resp?.output);
       throw new ActionCommandError(enhancedError.title, enhancedError.details);
     }
   }
@@ -663,14 +766,14 @@ export class ActionRunner {
     return { shouldModify: false };
   }
 
-  #createEnhancedShellError(
+  async #createEnhancedShellError(
     command: string,
     exitCode: number | undefined,
     output: string | undefined,
-  ): {
+  ): Promise<{
     title: string;
     details: string;
-  } {
+  }> {
     const trimmedCommand = command.trim();
     const firstWord = trimmedCommand.split(/\s+/)[0];
 
@@ -709,8 +812,36 @@ export class ActionRunner {
       {
         pattern: /command not found/,
         title: 'Command Not Found',
-        getMessage: () =>
-          `The command '${firstWord}' is not available in WebContainer.\n\nSuggestion: Check available commands or use a package manager to install it.`,
+        getMessage: async () => {
+          // Check if this might be a missing dependency issue
+          try {
+            const webcontainer = await this.#webcontainer;
+            const packageJsonPath = nodePath.join(webcontainer.workdir, 'package.json');
+
+            try {
+              await webcontainer.fs.readFile(packageJsonPath, 'utf-8');
+
+              // package.json exists, check if node_modules exists
+              const nodeModulesPath = nodePath.join(webcontainer.workdir, 'node_modules');
+
+              try {
+                await webcontainer.fs.readdir(nodeModulesPath);
+
+                // node_modules exists, so it's likely a missing package
+                return `The command '${firstWord}' is not available. This might be a missing dependency.\n\nSuggestion: Check if '${firstWord}' is listed in package.json dependencies and run 'npm install' to install it.`;
+              } catch {
+                // node_modules doesn't exist
+                return `The command '${firstWord}' is not available. Dependencies are not installed.\n\nSuggestion: Run 'npm install' first to install project dependencies.`;
+              }
+            } catch {
+              // package.json doesn't exist, it's just a missing command
+              return `The command '${firstWord}' is not available in WebContainer.\n\nSuggestion: Check available commands or use a package manager to install it.`;
+            }
+          } catch {
+            // If check fails, return generic message
+            return `The command '${firstWord}' is not available in WebContainer.\n\nSuggestion: Check available commands or use a package manager to install it.`;
+          }
+        },
       },
       {
         pattern: /Is a directory/,
@@ -728,9 +859,10 @@ export class ActionRunner {
     // Try to match known error patterns
     for (const errorPattern of errorPatterns) {
       if (output && errorPattern.pattern.test(output)) {
+        const message = await errorPattern.getMessage();
         return {
           title: errorPattern.title,
-          details: errorPattern.getMessage(),
+          details: message,
         };
       }
     }

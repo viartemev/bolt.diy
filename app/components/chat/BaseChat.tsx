@@ -18,8 +18,8 @@ import { Messages } from './Messages.client';
 import ProgressCompilation from './ProgressCompilation';
 import StarterTemplates from './StarterTemplates';
 import { ExamplePrompts } from '~/components/chat/ExamplePrompts';
+import { ImportFolderButton } from '~/components/chat/ImportFolderButton';
 import { SupabaseChatAlert } from '~/components/chat/SupabaseAlert';
-import { ImportButtons } from '~/components/chat/chatExportAndImport/ImportButtons';
 import DeployChatAlert from '~/components/deploy/DeployAlert';
 import { Menu } from '~/components/sidebar/Menu.client';
 import type { ElementInfo } from '~/components/workbench/Inspector';
@@ -468,7 +468,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div className="flex flex-col justify-center">
               {!chatStarted && (
                 <div className="flex justify-center gap-2">
-                  {ImportButtons(importChat)}
+                  <ImportFolderButton importChat={importChat} />
                   <GitCloneButton importChat={importChat} />
                 </div>
               )}

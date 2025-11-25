@@ -15,9 +15,6 @@ interface FileContent {
 
 // Helper function to make any command non-interactive
 function makeNonInteractive(command: string): string {
-  // Set environment variables for non-interactive mode
-  const envVars = 'export CI=true DEBIAN_FRONTEND=noninteractive FORCE_COLOR=0';
-
   // Common interactive packages and their non-interactive flags
   const interactivePackages = [
     { pattern: /npx\s+([^@\s]+@?[^\s]*)\s+init/g, replacement: 'echo "y" | npx --yes $1 init --defaults --yes' },
@@ -35,7 +32,25 @@ function makeNonInteractive(command: string): string {
     processedCommand = processedCommand.replace(pattern, replacement);
   });
 
-  return `${envVars} && ${processedCommand}`;
+  // Split command by && to apply env vars to each part
+  const commandParts = processedCommand.split(/\s+&&\s+/);
+
+  /*
+   * Apply environment variables to each command part
+   * Use inline env vars instead of export for better jsh compatibility
+   */
+  const envVars = 'CI=true DEBIAN_FRONTEND=noninteractive FORCE_COLOR=0';
+
+  const commandsWithEnv = commandParts.map((part) => {
+    // Only add env vars to commands that might need them (npm, npx, etc.)
+    if (part.match(/^(npm|npx|yarn|pnpm)/)) {
+      return `${envVars} ${part}`;
+    }
+
+    return part;
+  });
+
+  return commandsWithEnv.join(' && ');
 }
 
 export async function detectProjectCommands(files: FileContent[]): Promise<ProjectCommands> {
@@ -66,8 +81,12 @@ export async function detectProjectCommands(files: FileContent[]): Promise<Proje
       const preferredCommands = ['dev', 'start', 'preview'];
       const availableCommand = preferredCommands.find((cmd) => scripts[cmd]);
 
-      // Build setup command with non-interactive handling
-      let baseSetupCommand = 'npx update-browserslist-db@latest && npm install';
+      /*
+       * Build setup command with non-interactive handling
+       * Note: Removed update-browserslist-db as it can cause issues and is not critical
+       * Users can run it manually if needed
+       */
+      let baseSetupCommand = 'npm install';
 
       // Add shadcn init if it's a shadcn project
       if (isShadcnProject) {
