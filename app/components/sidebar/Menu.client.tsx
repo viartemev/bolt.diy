@@ -454,7 +454,7 @@ export const Menu = () => {
                 {list.length === 0 ? 'No previous conversations' : 'No matches found'}
               </div>
             )}
-            <DialogRoot open={dialogContent !== null}>
+            <DialogRoot open={dialogContent !== null} onOpenChange={(open) => !open && closeDialog()}>
               {binDates(filteredList).map(({ category, items }) => (
                 <div key={category} className="mt-2 first:mt-0 space-y-1">
                   <div className="text-xs font-medium text-gray-500 dark:text-gray-400 sticky top-0 z-1 bg-white dark:bg-gray-950 px-4 py-1">
