@@ -23,7 +23,14 @@ import type { LlmErrorAlertType } from '~/types/actions';
 import type { ChatMessageMetadata } from '~/types/chat';
 import { defaultDesignScheme, type DesignScheme } from '~/types/design-scheme';
 import type { ProviderInfo } from '~/types/model';
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, PROMPT_COOKIE_KEY, PROVIDER_LIST } from '~/utils/constants';
+import {
+  DEFAULT_MODEL,
+  DEFAULT_PROVIDER,
+  MODEL_REGEX,
+  PROMPT_COOKIE_KEY,
+  PROVIDER_LIST,
+  PROVIDER_REGEX,
+} from '~/utils/constants';
 import { debounce } from '~/utils/debounce';
 import { cubicEasingFn } from '~/utils/easings';
 import { filesToArtifacts } from '~/utils/fileUtils';
@@ -95,39 +102,40 @@ function normalizeMessagesForDisplay(messages: UIMessage[], parsedMessages: Reco
   const normalized: UIMessage[] = [];
 
   messages.forEach((message, index) => {
-    if (message.role !== 'assistant') {
-      normalized.push(message);
-      return;
-    }
-
     const textParts = (message.parts?.filter((part: any) => part?.type === 'text') ?? []) as TextUIPart[];
     const rawText = textParts.map((part) => part.text).join('');
     const containsArtifacts = ARTIFACT_PATTERN.test(rawText);
     const sanitizedText = stripBoltArtifacts(rawText);
+    const cleanSanitizedText = sanitizedText.replace(MODEL_REGEX, '').replace(PROVIDER_REGEX, '').trim();
 
     const metadata: ChatMessageMetadata = {
       ...((message.metadata as ChatMessageMetadata) || {}),
     };
 
-    const assistantMessage = {
+    const normalizedMessage = {
       ...message,
       metadata,
-      content: parsedMessages[index] || '',
+      ...(message.role === 'assistant' ? { content: parsedMessages[index] || '' } : {}),
     } as UIMessage;
 
     if (!containsArtifacts) {
-      normalized.push(assistantMessage);
+      normalized.push(normalizedMessage);
       return;
     }
 
-    assistantMessage.metadata = { ...metadata, hidden: true };
-    normalized.push(assistantMessage);
+    normalizedMessage.metadata = { ...metadata, hidden: true };
+    normalized.push(normalizedMessage);
 
-    const summaryText = metadata.displayText || sanitizedText || 'Generated files have been applied to the editor.';
+    const summaryText =
+      metadata.displayText ||
+      cleanSanitizedText ||
+      (message.role === 'assistant'
+        ? 'Generated files have been applied to the editor.'
+        : 'User shared updated files.');
 
     normalized.push({
       id: `${message.id}-summary`,
-      role: 'assistant',
+      role: message.role,
       parts: [{ type: 'text', text: summaryText }] as TextUIPart[],
       metadata: { displayText: summaryText },
     } as UIMessage);

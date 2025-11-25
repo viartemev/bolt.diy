@@ -11,6 +11,7 @@ import { db, chatId } from '~/lib/persistence/useChatHistory';
 import type { ChatMessageMetadata } from '~/types/chat';
 import type { ProviderInfo } from '~/types/model';
 import { classNames } from '~/utils/classNames';
+import { MODEL_REGEX, PROVIDER_REGEX } from '~/utils/constants';
 
 interface MessagesProps {
   id?: string;
@@ -70,16 +71,18 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
               const rawContent = textParts.map((p: any) => p.text).join('');
               const containsArtifacts = /<boltArtifact|<boltAction/.test(rawContent);
               const messageMetadata = metadata as ChatMessageMetadata | undefined;
-              const sanitizedContent = stripBoltArtifacts(rawContent);
+
+              const sanitizedContent = stripBoltArtifacts(rawContent)
+                .replace(MODEL_REGEX, '')
+                .replace(PROVIDER_REGEX, '')
+                .trim();
 
               const fallbackText = containsArtifacts ? 'Generated files have been applied to the editor.' : '';
+              const preferredText = sanitizedContent.length > 0 ? sanitizedContent : fallbackText;
 
-              const content =
-                messageMetadata?.displayText ?? (sanitizedContent.length > 0 ? sanitizedContent : fallbackText);
+              const content = messageMetadata?.displayText ?? preferredText;
 
-              const isHidden =
-                messageMetadata?.hidden ??
-                (containsArtifacts && sanitizedContent.length === 0 && !messageMetadata?.displayText);
+              const isHidden = messageMetadata?.hidden ?? containsArtifacts;
 
               if (isHidden) {
                 return <Fragment key={index} />;
