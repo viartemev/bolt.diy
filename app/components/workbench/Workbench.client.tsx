@@ -10,7 +10,6 @@ import { EditorPanel } from './EditorPanel';
 
 import type { ElementInfo } from './Inspector';
 import { Preview } from './Preview';
-import { ExportChatButton } from '~/components/chat/chatExportAndImport/ExportChatButton';
 import {
   type OnChangeCallback as OnEditorChange,
   type OnScrollCallback as OnEditorScroll,
@@ -18,7 +17,6 @@ import {
 import { IconButton } from '~/components/ui/IconButton';
 import { Slider, type SliderOptions } from '~/components/ui/Slider';
 import useViewport from '~/lib/hooks';
-import { useChatHistory } from '~/lib/persistence';
 import { chatStore } from '~/lib/stores/chat';
 import { usePreviewStore } from '~/lib/stores/previews';
 import { workbenchStore, type WorkbenchViewType } from '~/lib/stores/workbench';
@@ -303,7 +301,6 @@ export const Workbench = memo(
     const canHideChat = showWorkbench || !showChat;
 
     const isSmallViewport = useViewport(1024);
-    const { exportChat } = useChatHistory();
 
     const setSelectedView = (view: WorkbenchViewType) => {
       workbenchStore.currentView.set(view);
@@ -388,8 +385,16 @@ export const Workbench = memo(
                   <div className="ml-auto" />
                   {selectedView === 'code' && (
                     <div className="flex overflow-y-auto">
-                      {/* Export Chat Button */}
-                      <ExportChatButton exportChat={exportChat} />
+                      {/* Download Code Button */}
+                      <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden">
+                        <button
+                          onClick={() => workbenchStore.downloadZip()}
+                          className="rounded-md items-center justify-center [&:is(:disabled,.disabled)]:cursor-not-allowed [&:is(:disabled,.disabled)]:opacity-60 px-3 py-1.5 text-xs bg-accent-500 text-white hover:text-bolt-elements-item-contentAccent [&:not(:disabled,.disabled)]:hover:bg-bolt-elements-button-primary-backgroundHover outline-accent-500 flex gap-1.7"
+                        >
+                          <div className="i-ph:code" />
+                          Download Code
+                        </button>
+                      </div>
 
                       {/* Toggle Terminal Button */}
                       <div className="flex border border-bolt-elements-borderColor rounded-md overflow-hidden ml-1">
